@@ -48,6 +48,15 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
 .panel.on{display:flex}
 .pscroll{flex:1;overflow-y:auto;padding:20px}
 
+/* GREETING */
+.greeting-bar{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.greeting-main{font-size:21px;font-weight:800;color:var(--text);margin-bottom:2px;letter-spacing:-.3px}
+.greeting-sub{font-size:12px;color:var(--muted)}
+
+/* START MAP */
+#start-map{height:200px;border-radius:var(--r);overflow:hidden;border:1px solid var(--border);margin-bottom:14px}
+@media(max-width:640px){#start-map{height:150px}}
+
 /* DESTINATION ROW */
 .dest-row{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px;transition:border-color .15s}
 .dest-row:focus-within{border-color:var(--blue)}
@@ -221,7 +230,6 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
 .trip-col{flex:1;padding:14px 16px}
 .trip-col+.trip-col{border-left:1px solid var(--border)}
 .trip-lbl{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
-.trip-dest-name{font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px}
 .trip-wx-big{font-size:26px;font-weight:800;margin-bottom:2px;line-height:1}
 .trip-wx-sub{font-size:11px;color:var(--muted);margin-bottom:6px}
 .trip-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;letter-spacing:.05em;text-transform:uppercase}
@@ -266,6 +274,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
     <button id="nb-start" class="nav-btn on"  onclick="show('start',this)"><span class="nav-ico">◉</span><span class="nav-lbl">Start</span></button>
     <button id="nb-dep"   class="nav-btn"     onclick="show('dep',this)"><span class="nav-ico">⊞</span><span class="nav-lbl">Bahn</span></button>
     <button id="nb-route" class="nav-btn"     onclick="show('route',this)"><span class="nav-ico">⬡</span><span class="nav-lbl">Route</span></button>
+    <button id="nb-stoer" class="nav-btn"     onclick="show('stoer',this)"><span class="nav-ico">◬</span><span class="nav-lbl">Störung</span></button>
     <button id="nb-bike"  class="nav-btn"     onclick="show('bike',this)"><span class="nav-ico">◈</span><span class="nav-lbl">Räder</span></button>
     <button id="nb-car"   class="nav-btn"     onclick="show('car',this)"><span class="nav-ico">◻</span><span class="nav-lbl">Sharing</span></button>
     <div class="nav-spacer"></div>
@@ -278,6 +287,24 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
     <!-- START -->
     <div id="panel-start" class="panel on">
       <div class="pscroll">
+
+        <div class="greeting-bar">
+          <div id="greeting-main" class="greeting-main">Willkommen</div>
+          <div id="greeting-sub" class="greeting-sub">Hamburg · Wetter wird geladen…</div>
+        </div>
+
+        <div id="rec-card" class="rec-card transit">
+          <div class="rec-top">
+            <div class="rec-body">
+              <div id="rec-mode" class="rec-mode">Lädt…</div>
+              <div id="rec-title" class="rec-title">Wetterdaten werden geladen</div>
+              <div id="rec-detail" class="rec-detail"></div>
+              <div id="rec-tags" class="rec-tags"></div>
+            </div>
+            <div id="rec-dist" class="rec-dist" style="display:none"></div>
+          </div>
+        </div>
+
         <div class="dest-row">
           <div class="dest-prefix">Wohin?</div>
           <input id="dest-in" class="dest-in" type="text"
@@ -303,34 +330,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
           </div>
         </div>
 
-        <div id="rec-card" class="rec-card transit">
-          <div class="rec-top">
-            <div class="rec-body">
-              <div id="rec-mode" class="rec-mode">Lädt…</div>
-              <div id="rec-title" class="rec-title">Wetterdaten werden geladen</div>
-              <div id="rec-detail" class="rec-detail"></div>
-              <div id="rec-tags" class="rec-tags"></div>
-            </div>
-            <div id="rec-dist" class="rec-dist" style="display:none"></div>
-          </div>
-        </div>
-
-        <!-- VERKEHR & STÖRUNGEN -->
-        <div id="traffic-card" class="rec-card traffic" style="display:none">
-          <div class="rec-top">
-            <div class="rec-body">
-              <div class="rec-mode">Verkehr &amp; Störungen</div>
-              <div id="traffic-title" class="rec-title">Verkehrslage</div>
-              <div id="traffic-detail" class="rec-detail"></div>
-              <div id="traffic-tags" class="rec-tags"></div>
-            </div>
-          </div>
-          <div class="rec-links">
-            <a class="rec-link" href="https://www.hvv.de/de/service/betriebsmeldungen" target="_blank">HVV Störungen →</a>
-            <a class="rec-link" href="https://www.ndr.de/nachrichten/info/stau,stau112.html" target="_blank">NDR Staumelder →</a>
-            <a class="rec-link" href="https://www.hamburg.de/verkehr/" target="_blank">Verkehrsinfos →</a>
-          </div>
-        </div>
+        <div id="start-map"></div>
 
         <!-- EVENTS IN HAMBURG -->
         <div id="events-card" class="rec-card events" style="display:none">
@@ -432,6 +432,42 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
       </div>
     </div>
 
+    <!-- STÖRUNGEN -->
+    <div id="panel-stoer" class="panel">
+      <div class="pscroll">
+        <div id="stoer-status-card" class="rec-card traffic">
+          <div class="rec-top">
+            <div class="rec-body">
+              <div class="rec-mode">Aktuelle Lage</div>
+              <div id="stoer-title" class="rec-title">Wird geladen…</div>
+              <div id="stoer-detail" class="rec-detail"></div>
+              <div id="stoer-tags" class="rec-tags"></div>
+            </div>
+          </div>
+        </div>
+        <div id="stoer-dep-box" style="margin-bottom:14px"></div>
+        <div class="sec-lbl">Externe Quellen</div>
+        <div class="pbox">
+          <div class="prow">
+            <div class="prow-info"><div class="prow-name">HVV Betriebsmeldungen</div><div class="prow-sub">Echtzeitstörungen Busse &amp; Bahnen</div></div>
+            <a class="prow-link" href="https://www.hvv.de/de/service/betriebsmeldungen" target="_blank">Öffnen →</a>
+          </div>
+          <div class="prow">
+            <div class="prow-info"><div class="prow-name">NDR Staumelder</div><div class="prow-sub">Aktuelle Staus &amp; Sperrungen Hamburg</div></div>
+            <a class="prow-link" href="https://www.ndr.de/nachrichten/info/stau,stau112.html" target="_blank">Öffnen →</a>
+          </div>
+          <div class="prow">
+            <div class="prow-info"><div class="prow-name">DB Streckenstatus</div><div class="prow-sub">Störungen im Fernverkehr</div></div>
+            <a class="prow-link" href="https://www.bahn.de/service/zug/reiseauskunft" target="_blank">Öffnen →</a>
+          </div>
+          <div class="prow">
+            <div class="prow-info"><div class="prow-name">Verkehrsinfos Hamburg</div><div class="prow-sub">Baustellen, Sperrungen, Verkehrslagen</div></div>
+            <a class="prow-link" href="https://www.hamburg.de/verkehr/" target="_blank">Öffnen →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- RÄDER -->
     <div id="panel-bike" class="panel">
       <div class="pscroll">
@@ -526,11 +562,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
       <div class="sp-sec">
         <h3>Informationen</h3>
         <div class="sp-row">
-          <div class="sp-lbl">Verkehrslage anzeigen <span class="sp-sub">Stau &amp; Störungshinweise</span></div>
-          <label class="tog"><input type="checkbox" id="p-traffic"><div class="tog-s"></div></label>
-        </div>
-        <div class="sp-row">
-          <div class="sp-lbl">Events in der Nähe <span class="sp-sub">Veranstaltungshinweise</span></div>
+          <div class="sp-lbl">Events in der Nähe <span class="sp-sub">Veranstaltungshinweise auf Startseite</span></div>
           <label class="tog"><input type="checkbox" id="p-events"><div class="tog-s"></div></label>
         </div>
       </div>
@@ -544,11 +576,10 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ── PREFS ─────────────────────────────────────────────────
-const DP={wantBike:true,hasCar:true,hasScooter:true,tMin:8,tMax:34,wMax:25,rainOk:false,showTraffic:true,showEvents:true};
+const DP={wantBike:true,hasCar:true,hasScooter:true,tMin:8,tMax:34,wMax:25,rainOk:false,showEvents:true};
 const lP=()=>{
   try{
     const stored=JSON.parse(localStorage.getItem('mp')||'{}');
-    // migrate hasBike → wantBike for existing users
     if('hasBike' in stored&&!('wantBike' in stored)){stored.wantBike=stored.hasBike;delete stored.hasBike;}
     return{...DP,...stored};
   }catch{return{...DP};}
@@ -572,7 +603,6 @@ function openSettings(){
   document.getElementById('p-tmax').value=p.tMax;
   document.getElementById('p-wmax').value=p.wMax;
   document.getElementById('p-rain').checked=p.rainOk;
-  document.getElementById('p-traffic').checked=p.showTraffic;
   document.getElementById('p-events').checked=p.showEvents;
   document.getElementById('bike-thresh').style.display=p.wantBike?'':'none';
   document.getElementById('p-bike').onchange=e=>document.getElementById('bike-thresh').style.display=e.target.checked?'':'none';
@@ -588,7 +618,6 @@ function saveSettings(){
     tMax:+document.getElementById('p-tmax').value,
     wMax:+document.getElementById('p-wmax').value,
     rainOk:document.getElementById('p-rain').checked,
-    showTraffic:document.getElementById('p-traffic').checked,
     showEvents:document.getElementById('p-events').checked,
   });
   document.getElementById('sp-ok').textContent='✓ Gespeichert';
@@ -599,14 +628,15 @@ function saveSettings(){
 (function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});setTimeout(tick,15e3)})();
 
 // ── NAVIGATION ────────────────────────────────────────────
-let efaLoaded=false;
 function show(id,btn){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('on'));
   document.getElementById('panel-'+id).classList.add('on');
   if(btn)btn.classList.add('on');
   if(id==='bike')setTimeout(()=>leafMap&&leafMap.invalidateSize(),150);
+  if(id==='start')setTimeout(()=>startMap&&startMap.invalidateSize(),150);
   if(id==='dep'&&!document.getElementById('dep-board').querySelector('.dep-box'))loadDep();
+  if(id==='stoer')renderStoer();
 }
 
 // ── WEATHER ───────────────────────────────────────────────
@@ -628,7 +658,9 @@ async function loadWeather(){
     wxState={t:Math.round(wx.main.temp),w:Math.round(wx.wind.speed*3.6),h:wx.main.humidity,id:wx.weather[0].id,desc:wx.weather[0].description};
     document.getElementById('wx-pill').innerHTML=`${wxIcon(wxState.id)} <b>${wxState.t}°C</b> &middot; ${wxState.w} km/h`;
     renderRec();
+    renderGreeting();
     renderInfoCards();
+    renderStoer();
   }catch(e){
     console.error('weather',e);
     document.getElementById('wx-pill').textContent='Wetter nicht verfügbar';
@@ -665,6 +697,111 @@ async function loadForecast(){
     console.error('forecast',e);
     document.getElementById('fc-grid').innerHTML=`<div class="err" style="grid-column:1/-1">Vorhersage nicht verfügbar: ${e.message}</div>`;
   }
+}
+
+// ── GREETING ──────────────────────────────────────────────
+function renderGreeting(){
+  const h=new Date().getHours();
+  const greet=h<5?'Gute Nacht':h<12?'Guten Morgen':h<18?'Guten Tag':'Guten Abend';
+  const days=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+  const months=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const now=new Date();
+  const ds=`${days[now.getDay()]}, ${now.getDate()}. ${months[now.getMonth()]}`;
+  document.getElementById('greeting-main').textContent=greet;
+  const sub=wxState?`${ds} · ${wxIcon(wxState.id)} ${wxState.t}°C · ${wxState.desc}`:`${ds} · Hamburg`;
+  document.getElementById('greeting-sub').textContent=sub;
+}
+
+// ── START MAP ─────────────────────────────────────────────
+let startMap=null,startDestMarker=null,startRouteLine=null;
+
+function initStartMap(){
+  if(startMap)return;
+  startMap=L.map('start-map',{zoomControl:false,attributionControl:false}).setView(HH,11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(startMap);
+  L.control.zoom({position:'bottomright'}).addTo(startMap);
+  L.circleMarker(HH,{radius:7,fillColor:'#2563eb',color:'#fff',weight:2,fillOpacity:1})
+    .addTo(startMap).bindPopup('<b>Hamburg</b>');
+}
+
+function updateStartMap(){
+  if(!startMap)return;
+  if(startDestMarker){startMap.removeLayer(startDestMarker);startDestMarker=null;}
+  if(startRouteLine){startMap.removeLayer(startRouteLine);startRouteLine=null;}
+  if(!destState){startMap.setView(HH,11);return;}
+  startDestMarker=L.circleMarker([destState.lat,destState.lon],{radius:7,fillColor:'#cf222e',color:'#fff',weight:2,fillOpacity:1})
+    .addTo(startMap).bindPopup(`<b>${destState.name}</b><br>${fmtDist(destState.dist)} von Hamburg`);
+  startRouteLine=L.polyline([HH,[destState.lat,destState.lon]],{color:'#2563eb',weight:2,dashArray:'5 5',opacity:.5}).addTo(startMap);
+  startMap.fitBounds([[HH[0],HH[1]],[destState.lat,destState.lon]],{padding:[24,24]});
+}
+
+// ── STÖRUNGEN ─────────────────────────────────────────────
+let lastDeps=[];
+
+function renderStoer(){
+  if(wxState){
+    const{t,w,id}=wxState;
+    const rain=id>=300&&id<700,heavy=id>=500&&id<600,thunder=id<300;
+    const h=new Date().getHours();
+    const morningRush=h>=7&&h<=9,eveningRush=h>=16&&h<=19,rush=morningRush||eveningRush;
+    const tags=[];
+    let title,detail;
+    if(thunder){
+      title='Gewitter — starke Verzögerungen möglich';
+      detail='Gewitterbedingte Störungen im ÖPNV und erhöhtes Unfallrisiko im Straßenverkehr.';
+      tags.push({t:'Gewitter',c:'bad'},{t:'Störungen wahrscheinlich',c:'bad'});
+    }else if(heavy&&rush){
+      title='Starkregen + Rushhour — Staus wahrscheinlich';
+      detail='Kombination aus Starkregen und erhöhtem Verkehrsaufkommen. Mehr Zeit einplanen.';
+      tags.push({t:'Starkregen',c:'bad'},{t:morningRush?'Morgenrush':'Abendrush',c:'warn'});
+    }else if(heavy){
+      title='Starkregen — Verzögerungen möglich';
+      detail='Bei Starkregen kommt es häufig zu Staus und ÖPNV-Verspätungen.';
+      tags.push({t:'Starkregen',c:'bad'});
+    }else if(rain&&rush){
+      title='Regen + Rushhour — mehr Zeit einplanen';
+      detail='Leichter Regen und Stoßzeiten erhöhen das Verkehrsaufkommen.';
+      tags.push({t:'Regen',c:'warn'},{t:morningRush?'Morgenrush':'Abendrush',c:'warn'});
+    }else if(rush){
+      title=morningRush?'Morgenrush — erhöhtes Verkehrsaufkommen':'Abendrush — erhöhtes Verkehrsaufkommen';
+      detail='Stoßzeiten: S-Bahn und Busse stärker ausgelastet.';
+      tags.push({t:morningRush?'Morgenrush':'Abendrush',c:'warn'},{t:'Normalbetrieb',c:'ok'});
+    }else if(w>40){
+      title='Starker Wind — Fährbetrieb möglicherweise eingeschränkt';
+      detail=`Windgeschwindigkeit ${w} km/h. Fährlinien können betroffen sein.`;
+      tags.push({t:`Wind ${w} km/h`,c:'warn'});
+    }else{
+      title='Keine bekannten Störungen';
+      detail='Aktuelle Störungsmeldungen direkt bei HVV und NDR prüfen.';
+      tags.push({t:'Normalbetrieb',c:'ok'});
+    }
+    document.getElementById('stoer-status-card').className='rec-card traffic';
+    document.getElementById('stoer-title').textContent=title;
+    document.getElementById('stoer-detail').textContent=detail;
+    document.getElementById('stoer-tags').innerHTML=tags.map(x=>`<span class="rtag ${x.c}">${x.t}</span>`).join('');
+  }
+
+  const sb=document.getElementById('stoer-dep-box');
+  if(!lastDeps.length){
+    sb.innerHTML=`<div class="dep-box"><div class="dep-hd"><span class="dep-sn">Zugstatus</span><span class="dep-ts">Bahn-Tab öffnen zum Laden</span></div></div>`;
+    return;
+  }
+  const delayed=lastDeps.filter(d=>(d.delayDeparture||0)>2&&!d.isCancelled).length;
+  const cancl=lastDeps.filter(d=>d.isCancelled===1).length;
+  const summ=cancl?`${cancl} Ausfall${cancl>1?'e':''}`:delayed?`${delayed} verspätet`:'Alles pünktlich';
+  const rows=lastDeps.slice(0,10).map(d=>{
+    const delay=d.delayDeparture??0,cancelled=d.isCancelled===1;
+    const name=(d.train||'').trim();
+    const dest=(d.destination||'?').replace(/^Hamburg[- ]/i,'');
+    const[hh,mm]=(d.scheduledDeparture||'00:00').split(':').map(Number);
+    let tHtml;
+    if(cancelled)tHtml='<span style="color:var(--red);font-style:italic">Fällt aus</span>';
+    else if(delay>5)tHtml=`<span class="t-now">+${delay}'</span>`;
+    else if(delay>2)tHtml=`<span class="t-soon">+${delay}'</span>`;
+    else tHtml=`<span class="t-ok">Pünktlich</span>`;
+    return`<tr><td><span class="lbadge ${badgeCls(d.trainClasses||[])}">${name}</span></td><td class="dep-dir">${dest}</td><td class="dep-plt">${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}</td><td class="dep-t">${tHtml}</td></tr>`;
+  }).join('');
+  sb.innerHTML=`<div class="dep-box"><div class="dep-hd"><span class="dep-sn">${curLabel}</span><span class="dep-ts">${summ}</span></div><table class="dep-tbl"><tbody>${rows}</tbody></table></div>`;
 }
 
 // ── RECOMMENDATION ────────────────────────────────────────
@@ -766,67 +903,16 @@ function renderRec(){
   renderForecast(p);
 }
 
-// ── INFO CARDS: TRAFFIC + EVENTS ──────────────────────────
+// ── EVENTS CARD ───────────────────────────────────────────
 function renderInfoCards(){
   const p=lP();
-  const tc=document.getElementById('traffic-card');
   const ec=document.getElementById('events-card');
-
-  // Traffic card
-  if(p.showTraffic&&wxState){
-    const{t,w,id}=wxState;
-    const rain=id>=300&&id<700,heavy=id>=500&&id<600,thunder=id<300;
-    const h=new Date().getHours();
-    const morningRush=h>=7&&h<=9,eveningRush=h>=16&&h<=19,rush=morningRush||eveningRush;
-    const tags=[];
-    let title,detail;
-
-    if(thunder){
-      title='Gewitter — starke Verzögerungen möglich';
-      detail='Gewitterbedingte Störungen im ÖPNV und erhöhtes Unfallrisiko im Straßenverkehr.';
-      tags.push({t:'Gewitter',c:'bad'},{t:'Störungen wahrscheinlich',c:'bad'});
-    }else if(heavy&&rush){
-      title='Starkregen + Rushhour — Staus wahrscheinlich';
-      detail='Kombination aus Starkregen und erhöhtem Verkehrsaufkommen. Mehr Zeit einplanen.';
-      tags.push({t:'Starkregen',c:'bad'},{t:morningRush?'Morgenrush':'Abendrush',c:'warn'});
-    }else if(heavy){
-      title='Starkregen — Verzögerungen möglich';
-      detail='Bei Starkregen kommt es häufig zu Staus und ÖPNV-Verspätungen.';
-      tags.push({t:'Starkregen',c:'bad'});
-    }else if(rain&&rush){
-      title='Regen + Rushhour — mehr Zeit einplanen';
-      detail='Leichter Regen und Stoßzeiten erhöhen Verkehrsaufkommen. HVV-Störungen prüfen.';
-      tags.push({t:'Regen',c:'warn'},{t:morningRush?'Morgenrush':'Abendrush',c:'warn'});
-    }else if(rush){
-      title=morningRush?'Morgenrush — erhöhtes Verkehrsaufkommen':'Abendrush — erhöhtes Verkehrsaufkommen';
-      detail='Stoßzeiten: S-Bahn und Busse stärker ausgelastet. HVV-App für Echtzeitinfos nutzen.';
-      tags.push({t:morningRush?'Morgenrush':'Abendrush',c:'warn'},{t:'Normal',c:'ok'});
-    }else if(w>40){
-      title='Starker Wind — Behinderungen möglich';
-      detail='Bei Windstärken über 40 km/h kann es zu Einschränkungen im Fährbetrieb kommen.';
-      tags.push({t:`Wind ${w} km/h`,c:'warn'});
-    }else{
-      title='Keine bekannten Störungen';
-      detail='Aktuelle Störungsmeldungen immer direkt bei HVV und NDR prüfen.';
-      tags.push({t:'Normalbetrieb',c:'ok'});
-    }
-
-    document.getElementById('traffic-title').textContent=title;
-    document.getElementById('traffic-detail').textContent=detail;
-    document.getElementById('traffic-tags').innerHTML=tags.map(x=>`<span class="rtag ${x.c}">${x.t}</span>`).join('');
-    tc.style.display='';
-  }else{
-    tc.style.display='none';
-  }
-
-  // Events card
   if(p.showEvents&&wxState){
     const{t,w,id}=wxState;
     const rain=id>=300&&id<700,heavy=id>=500&&id<600,thunder=id<300;
     const goodWeather=!rain&&!thunder&&t>=14&&w<=25;
     const tags=[];
     let title,detail;
-
     if(thunder||heavy){
       title='Heute lieber drinnen — Theater, Museen, Kino';
       detail='Bei Gewitter/Starkregen sind Indoor-Veranstaltungen die bessere Wahl.';
@@ -848,7 +934,6 @@ function renderInfoCards(){
       detail='Hamburgs Veranstaltungskalender für aktuelle Events in deiner Nähe.';
       tags.push({t:'Events',c:'info'});
     }
-
     document.getElementById('events-title').textContent=title;
     document.getElementById('events-detail').textContent=detail;
     document.getElementById('events-tags').innerHTML=tags.map(x=>`<span class="rtag ${x.c}">${x.t}</span>`).join('');
@@ -886,7 +971,13 @@ function haversine(la1,lo1,la2,lo2){
 function fmtDist(km){return km<1?Math.round(km*1e3)+' m':km.toFixed(1)+' km'}
 async function calcRoute(){
   const q=document.getElementById('dest-in').value.trim();
-  if(!q){destState=null;destWeather=null;document.getElementById('trip-cmp').style.display='none';renderRec();return;}
+  if(!q){
+    destState=null;destWeather=null;
+    document.getElementById('trip-cmp').style.display='none';
+    renderRec();
+    updateStartMap();
+    return;
+  }
   try{
     let geo=geoCache[q];
     if(!geo){
@@ -898,6 +989,7 @@ async function calcRoute(){
     destState={name:q,lat:+geo.lat,lon:+geo.lon,dist:haversine(HH[0],HH[1],+geo.lat,+geo.lon)};
     document.getElementById('gmaps-link').href=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}&travelmode=transit`;
     renderRec();
+    updateStartMap();
     loadDestWeather(+geo.lat,+geo.lon);
   }catch(e){
     document.getElementById('rec-title').textContent='⚠ '+e.message;
@@ -945,8 +1037,10 @@ async function loadDep(){
     if(!r.ok)throw new Error('HTTP '+r.status);
     const{departures:deps=[]}=await r.json();
     if(!deps.length)throw new Error('Keine Abfahrten in den nächsten Minuten');
+    lastDeps=deps.slice(0,14);
+    renderStoer();
     const now=new Date();
-    const rows=deps.slice(0,14).map(d=>{
+    const rows=lastDeps.map(d=>{
       const cls=d.trainClasses||[];
       const name=(d.train||'').trim();
       const dest=(d.destination||'?').replace(/^Hamburg[- ]/i,'');
@@ -996,7 +1090,6 @@ function showBikeTab(tab){
   bikeTab=tab;
   document.getElementById('bt-stadtrad').className='chip'+(tab==='stadtrad'?' on':'');
   document.getElementById('bt-dott').className='chip'+(tab==='dott'?' on':'');
-  // toggle map markers
   srMarks.forEach(m=>tab==='stadtrad'?m.addTo(leafMap):leafMap.removeLayer(m));
   dottMarks.forEach(m=>tab==='dott'?m.addTo(leafMap):leafMap.removeLayer(m));
   renderBikeList(tab);
@@ -1025,7 +1118,6 @@ function renderBikeList(tab){
 async function loadBikes(){
   initMap();
   document.getElementById('bike-list').innerHTML='<div class="loading">Stationen werden geladen…</div>';
-  // load both in parallel, handle failures independently
   await Promise.allSettled([loadStadtRAD(), loadDott()]);
   renderBikeList(bikeTab);
 }
@@ -1110,12 +1202,14 @@ function renderProviders(){
 // ── INIT ──────────────────────────────────────────────────
 function refreshAll(){loadWeather();loadForecast();loadDep();loadBikes();}
 renderProviders();
+renderGreeting();
 refreshAll();
+initStartMap();
 setInterval(loadDep,60*1000);
 setInterval(loadWeather,5*60*1000);
 setInterval(loadForecast,30*60*1000);
 setInterval(loadBikes,5*60*1000);
-setInterval(renderInfoCards,60*1000);
+setInterval(renderGreeting,60*1000);
 </script>
 </body>
 </html>
