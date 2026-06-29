@@ -859,7 +859,8 @@ async function fetchTransitRoute(lat1,lon1,lat2,lon2){
     const mins=Math.round((arr-dep)/60000);
     const durTxt=mins<60?mins+' min':`${Math.floor(mins/60)}h ${mins%60}min`;
     const changes=Math.max(0,legs.length-1);
-    document.getElementById('ri-label').textContent=`Bus / ÖPNV · ca. ${durTxt}${changes?` · ${changes} Umstieg${changes>1?'e':''}':''}`;
+    const changesTxt=changes?' · '+changes+' Umstieg'+(changes>1?'e':''):'';
+    document.getElementById('ri-label').textContent='Bus / ÖPNV · ca. '+durTxt+changesTxt;
     document.getElementById('ri-sub').textContent=`${fromArr[0].name} → ${toArr[0].name}`;
   }catch(e){
     // Fallback: OSRM driving as approximate transit path
