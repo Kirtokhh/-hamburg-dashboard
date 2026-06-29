@@ -69,6 +69,9 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
 .dest-in::placeholder{color:var(--dim)}
 .dest-go{background:var(--blue);color:#fff;border:none;padding:0 16px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;font-family:inherit;transition:.1s;white-space:nowrap}
 .dest-go:hover{background:#1d4ed8}
+.dest-loc{background:var(--bg);color:var(--muted);border:none;border-right:1px solid var(--border);padding:0 11px;font-size:15px;cursor:pointer;transition:.1s;flex-shrink:0}
+.dest-loc:hover{color:var(--blue)}
+.dest-loc.on{background:var(--blue-bg);color:var(--blue)}
 
 /* REC CARD */
 .rec-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);border-left:4px solid var(--blue);padding:16px 18px;margin-bottom:14px;transition:border-left-color .3s}
@@ -314,6 +317,7 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
           <input id="dest-in" class="dest-in" type="text"
             placeholder="Ziel — z.B. Berlin, München, Lübeck …"
             onkeydown="if(event.key==='Enter')calcRoute()">
+          <button id="loc-btn" class="dest-loc" onclick="getLocation()" title="Mein Standort als Startpunkt">◎</button>
           <button class="dest-go" onclick="calcRoute()">Los</button>
         </div>
 
@@ -392,11 +396,13 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
           <button class="chip" onclick="setStop('Hamburg%20Wandsbek%20Markt','Wandsbek Markt',this)">Wandsbek Markt</button>
         </div>
         <div class="info-bar">
-          S-Bahn &amp; Fernverkehr: Echtzeit via DB/IRIS.
-          <strong>Bus &amp; U-Bahn:</strong> kein öffentliches API —
-          <a id="hvv-dep-link" href="https://www.hvv.de/de/fahrplaene/abfahrt-ankunft" target="_blank">HVV Abfahrten für diese Haltestelle →</a>
+          S-Bahn &amp; Fernverkehr via DB/IRIS · Bus &amp; U-Bahn via DB HAFAS (soweit verfügbar).
+          <a id="hvv-dep-link" href="https://www.hvv.de/de/fahrplaene/abfahrt-ankunft" target="_blank">Alle HVV-Abfahrten →</a>
         </div>
+        <div class="sec-lbl" style="margin-top:4px">S-Bahn &amp; Züge</div>
         <div id="dep-board"><div class="loading">Abfahrten werden geladen…</div></div>
+        <div class="sec-lbl">Bus &amp; U-Bahn</div>
+        <div id="bus-board"><div class="loading">Wird geladen…</div></div>
         <div class="btn-row">
           <a id="hvv-route-link" class="a-btn primary" href="https://www.hvv.de/de/fahrplaene/fahrplanauskunft" target="_blank">HVV Routenplaner</a>
           <a class="a-btn" href="https://www.hvv.de/de/tickets" target="_blank">Tickets</a>
@@ -648,7 +654,7 @@ function show(id,btn){
   if(btn)btn.classList.add('on');
   if(id==='bike')setTimeout(()=>leafMap&&leafMap.invalidateSize(),150);
   if(id==='start')setTimeout(()=>startMap&&startMap.invalidateSize(),150);
-  if(id==='dep'&&!document.getElementById('dep-board').querySelector('.dep-box'))loadDep();
+  if(id==='dep'&&!document.getElementById('dep-board').querySelector('.dep-box')){loadDep();loadBusDep();}
   if(id==='stoer')renderStoer();
 }
 
@@ -726,14 +732,39 @@ function renderGreeting(){
 }
 
 // ── START MAP ─────────────────────────────────────────────
-let startMap=null,startDestMarker=null,startRouteLine=null,routeMode='transit';
-let hhMarker=null;
+let startMap=null,startDestMarker=null,routeMode='transit';
+let hhMarker=null,routeFG=null,userPos=null;
+
+function getLocation(){
+  const btn=document.getElementById('loc-btn');
+  if(!navigator.geolocation){btn.title='Nicht verfügbar';return;}
+  btn.textContent='…';
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      userPos={lat:pos.coords.latitude,lon:pos.coords.longitude};
+      btn.classList.add('on');btn.textContent='◉';btn.title='Standort aktiv — klicken zum Deaktivieren';
+      btn.onclick=()=>{userPos=null;btn.classList.remove('on');btn.textContent='◎';
+        btn.title='Mein Standort als Startpunkt';btn.onclick=getLocation;
+        if(hhMarker){startMap.removeLayer(hhMarker);}
+        hhMarker=L.circleMarker(HH,{radius:7,fillColor:'#2563eb',color:'#fff',weight:2,fillOpacity:1}).addTo(startMap).bindPopup('<b>Hamburg</b>');
+        if(destState)fetchAndDrawRoute();
+      };
+      if(hhMarker)startMap.removeLayer(hhMarker);
+      hhMarker=L.circleMarker([userPos.lat,userPos.lon],{radius:8,fillColor:'#2563eb',color:'#fff',weight:2,fillOpacity:1})
+        .addTo(startMap).bindPopup('<b>Mein Standort</b>').openPopup();
+      if(destState)fetchAndDrawRoute();
+    },
+    ()=>{btn.textContent='◎';btn.title='Standortzugriff verweigert';},
+    {timeout:8000,maximumAge:120000}
+  );
+}
 
 function initStartMap(){
   if(startMap)return;
   startMap=L.map('start-map',{zoomControl:false,attributionControl:false}).setView(HH,11);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(startMap);
   L.control.zoom({position:'bottomright'}).addTo(startMap);
+  routeFG=L.featureGroup().addTo(startMap);
   hhMarker=L.circleMarker(HH,{radius:7,fillColor:'#2563eb',color:'#fff',weight:2,fillOpacity:1})
     .addTo(startMap).bindPopup('<b>Hamburg</b>');
 }
@@ -747,15 +778,19 @@ function setRouteMode(mode,btn){
 
 async function fetchAndDrawRoute(){
   if(!destState||!startMap)return;
-  if(startRouteLine){startMap.removeLayer(startRouteLine);startRouteLine=null;}
+  routeFG.clearLayers();
   const ri=document.getElementById('route-info');
   ri.style.display='flex';
   document.getElementById('ri-label').textContent='Route wird berechnet…';
   document.getElementById('ri-sub').textContent='';
   document.getElementById('ri-link').style.display='none';
 
+  const[lat1,lon1]=userPos?[userPos.lat,userPos.lon]:HH;
+  const{lat:lat2,lon:lon2}=destState;
+
+  if(routeMode==='transit'){await fetchTransitRoute(lat1,lon1,lat2,lon2);return;}
+
   const osrmProfile=routeMode==='bike'?'cycling':'driving';
-  const[lat1,lon1]=HH,{lat:lat2,lon:lon2}=destState;
   try{
     const r=await fetch(
       `https://router.project-osrm.org/route/v1/${osrmProfile}/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`,
@@ -766,42 +801,96 @@ async function fetchAndDrawRoute(){
     if(d.code!=='Ok'||!d.routes?.length)throw new Error('Keine Route');
     const route=d.routes[0];
     const coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);
-    const distM=route.distance,durS=routeMode==='transit'?route.duration*1.25:route.duration;
-    const color=routeMode==='bike'?'#1a7f37':routeMode==='car'?'#9a6700':'#2563eb';
-    startRouteLine=L.polyline(coords,{color,weight:4,opacity:.75}).addTo(startMap);
-    startMap.fitBounds(startRouteLine.getBounds(),{padding:[20,20]});
+    const distM=route.distance,durS=route.duration;
+    const color=routeMode==='bike'?'#1a7f37':'#9a6700';
+    L.polyline(coords,{color,weight:4,opacity:.75}).addTo(routeFG);
+    startMap.fitBounds(routeFG.getBounds(),{padding:[20,20]});
     const distTxt=distM<1000?Math.round(distM)+' m':(distM/1000).toFixed(1)+' km';
     const mins=Math.round(durS/60);
     const durTxt=mins<60?mins+' min':`${Math.floor(mins/60)}h ${mins%60}min`;
-    const modeLabel=routeMode==='bike'?'Fahrrad':routeMode==='car'?'Carsharing / Auto':'Bus / ÖPNV';
+    const modeLabel=routeMode==='bike'?'Fahrrad':'Carsharing / Auto';
     document.getElementById('ri-label').textContent=`${modeLabel} · ${distTxt} · ca. ${durTxt}`;
-    document.getElementById('ri-sub').textContent=routeMode==='transit'?'Geschätzte Reisezeit — exakte Verbindung via HVV':'';
     const linkEl=document.getElementById('ri-link');
     linkEl.style.display='';
-    if(routeMode==='transit'){
-      linkEl.href=`https://www.hvv.de/de/fahrplaene/fahrplanauskunft?start=${encodeURIComponent('Hamburg')}&destination=${encodeURIComponent(destState.name)}`;
-      linkEl.textContent='HVV öffnen →';
-    }else{
-      const gmMode=routeMode==='bike'?'bicycling':'driving';
-      linkEl.href=`https://www.google.com/maps/dir/?api=1&origin=${lat1},${lon1}&destination=${lat2},${lon2}&travelmode=${gmMode}`;
-      linkEl.textContent='Google Maps →';
-    }
+    const gmMode=routeMode==='bike'?'bicycling':'driving';
+    linkEl.href=`https://www.google.com/maps/dir/?api=1&origin=${lat1},${lon1}&destination=${lat2},${lon2}&travelmode=${gmMode}`;
+    linkEl.textContent='Google Maps →';
   }catch(e){
-    document.getElementById('ri-label').textContent='Route nicht verfügbar';
-    document.getElementById('ri-sub').textContent=e.message;
-    startRouteLine=L.polyline([HH,[lat2,lon2]],{color:'#9198a1',weight:2,dashArray:'5 5',opacity:.5}).addTo(startMap);
-    startMap.fitBounds([[lat1,lon1],[lat2,lon2]],{padding:[24,24]});
+    document.getElementById('ri-label').textContent='Route nicht verfügbar: '+e.message;
+    L.polyline([[lat1,lon1],[lat2,lon2]],{color:'#9198a1',weight:2,dashArray:'5 5',opacity:.5}).addTo(routeFG);
+    startMap.fitBounds(routeFG.getBounds(),{padding:[24,24]});
   }
+}
+
+async function fetchTransitRoute(lat1,lon1,lat2,lon2){
+  const ri=document.getElementById('route-info');
+  const productColor={suburban:'#1a7f37',regional:'#7f1d1d',regionalExp:'#7f1d1d',
+    nationalExpress:'#1c1c1c',national:'#1c1c1c',bus:'#9a3412',subway:'#1e3a8a',ferry:'#134e4a'};
+  try{
+    const[fromR,toR]=await Promise.all([
+      fetch(`https://v5.db.transport.rest/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
+      fetch(`https://v5.db.transport.rest/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
+    ]);
+    const[fromArr,toArr]=await Promise.all([fromR.json(),toR.json()]);
+    if(!fromArr?.length||!toArr?.length)throw new Error('Keine Haltestellen gefunden');
+    const jR=await fetch(
+      `https://v5.db.transport.rest/journeys?from=${fromArr[0].id}&to=${toArr[0].id}&results=1&stopovers=true`,
+      {signal:AbortSignal.timeout(12000)}
+    );
+    const jD=await jR.json();
+    if(!jD.journeys?.length)throw new Error('Keine Verbindung gefunden');
+    const journey=jD.journeys[0];
+    const legs=journey.legs.filter(l=>!l.walking&&l.stopovers?.length>=2);
+    legs.forEach(leg=>{
+      const color=productColor[leg.line?.product]||'#2563eb';
+      const coords=leg.stopovers.map(s=>[s.stop?.location?.latitude,s.stop?.location?.longitude]).filter(c=>c[0]&&c[1]);
+      if(coords.length>=2){
+        L.polyline(coords,{color,weight:4,opacity:.8}).addTo(routeFG);
+        leg.stopovers.slice(1,-1).forEach(s=>{
+          if(s.stop?.location)
+            L.circleMarker([s.stop.location.latitude,s.stop.location.longitude],
+              {radius:3,fillColor:color,color:'#fff',weight:1,fillOpacity:.9})
+              .addTo(routeFG).bindPopup(s.stop.name||'');
+        });
+      }
+    });
+    if(routeFG.getLayers().length)startMap.fitBounds(routeFG.getBounds(),{padding:[20,20]});
+    const dep=new Date(journey.legs[0].departure),arr=new Date(journey.legs[journey.legs.length-1].arrival);
+    const mins=Math.round((arr-dep)/60000);
+    const durTxt=mins<60?mins+' min':`${Math.floor(mins/60)}h ${mins%60}min`;
+    const changes=Math.max(0,legs.length-1);
+    document.getElementById('ri-label').textContent=`Bus / ÖPNV · ca. ${durTxt}${changes?` · ${changes} Umstieg${changes>1?'e':''}':''}`;
+    document.getElementById('ri-sub').textContent=`${fromArr[0].name} → ${toArr[0].name}`;
+  }catch(e){
+    // Fallback: OSRM driving as approximate transit path
+    try{
+      const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`,{signal:AbortSignal.timeout(8000)});
+      const d=await r.json();
+      if(d.code==='Ok'&&d.routes?.length){
+        const coords=d.routes[0].geometry.coordinates.map(([lng,lat])=>[lat,lng]);
+        L.polyline(coords,{color:'#2563eb',weight:3,dashArray:'8 4',opacity:.6}).addTo(routeFG);
+        startMap.fitBounds(routeFG.getBounds(),{padding:[20,20]});
+        const mins=Math.round(d.routes[0].duration*1.25/60);
+        const durTxt=mins<60?mins+' min':`${Math.floor(mins/60)}h ${mins%60}min`;
+        document.getElementById('ri-label').textContent=`Bus / ÖPNV · ca. ${durTxt} (Schätzung)`;
+        document.getElementById('ri-sub').textContent='Ungefähre Route — exakte Verbindung via HVV';
+      }
+    }catch{}
+  }
+  const linkEl=document.getElementById('ri-link');
+  linkEl.style.display='';
+  linkEl.href=`https://www.hvv.de/de/fahrplaene/fahrplanauskunft`;
+  linkEl.textContent='HVV öffnen →';
 }
 
 function updateStartMap(){
   if(!startMap)return;
   if(startDestMarker){startMap.removeLayer(startDestMarker);startDestMarker=null;}
-  if(startRouteLine){startMap.removeLayer(startRouteLine);startRouteLine=null;}
+  routeFG.clearLayers();
   const tabs=document.getElementById('route-tabs');
   const ri=document.getElementById('route-info');
   if(!destState){
-    startMap.setView(HH,11);
+    startMap.setView(userPos?[userPos.lat,userPos.lon]:HH,11);
     tabs.style.display='none';
     ri.style.display='none';
     return;
@@ -1088,6 +1177,7 @@ function setStop(id,label,btn){
   if(btn)btn.classList.add('on');
   updateHvvLinks();
   loadDep();
+  loadBusDep();
 }
 function searchStop(){
   const v=document.getElementById('stop-in').value.trim();
@@ -1097,6 +1187,7 @@ function searchStop(){
   document.getElementById('stop-in').value='';
   updateHvvLinks();
   loadDep();
+  loadBusDep();
 }
 function navToStop(){
   window.open(`https://www.hvv.de/de/fahrplaene/abfahrt-ankunft?stop=${encodeURIComponent(curLabel)}`,'_blank');
@@ -1148,6 +1239,54 @@ async function loadDep(){
     </div>`;
   }catch(e){
     document.getElementById('dep-board').innerHTML=`<div class="err">⚠ ${e.message}</div>`;
+  }
+}
+
+// ── BUS & U-BAHN via HAFAS ────────────────────────────────
+const hafasIdCache={};
+async function loadBusDep(){
+  const bb=document.getElementById('bus-board');
+  bb.innerHTML='<div class="loading">Wird geladen…</div>';
+  try{
+    let stopId=hafasIdCache[curLabel];
+    if(!stopId){
+      const lr=await fetch(`https://v5.db.transport.rest/locations?query=${encodeURIComponent(curLabel)}&results=1`,{signal:AbortSignal.timeout(7000)});
+      const ld=await lr.json();
+      if(!ld?.length)throw new Error('Haltestelle nicht gefunden');
+      stopId=ld[0].id;
+      hafasIdCache[curLabel]=stopId;
+    }
+    const dr=await fetch(`https://v5.db.transport.rest/stops/${stopId}/departures?duration=45&results=20`,{signal:AbortSignal.timeout(9000)});
+    if(!dr.ok)throw new Error('HTTP '+dr.status);
+    const deps=await dr.json();
+    const busDeps=(deps?.departures||deps||[]).filter(d=>['bus','subway','tram','ferry'].includes(d.line?.product)&&!d.cancelled).slice(0,12);
+    if(!busDeps.length){bb.innerHTML='<div class="loading" style="padding:14px">Keine Bus/U-Bahn-Abfahrten verfügbar</div>';return;}
+    const now=new Date();
+    const productBadge={bus:'l-re',subway:'l-ic',tram:'l-re',ferry:'l-s'};
+    const rows=busDeps.map(d=>{
+      const name=d.line?.name||'?';
+      const dest=(d.direction||'?').replace(/^Hamburg[, -]*/i,'');
+      const plat=d.platform?'Gl. '+d.platform:'';
+      const when=new Date(d.when||d.plannedWhen);
+      const delay=Math.round((d.delay||0)/60);
+      const min=Math.round((when-now)/60000);
+      let tHtml;
+      if(min<=0)tHtml='<span class="t-now">Jetzt</span>';
+      else if(min<60){
+        const cl=min<=3?'t-now':min<=9?'t-soon':'t-ok';
+        const dl=delay>0?`<span class="t-d">+${delay}'</span>`:'';
+        tHtml=`<span class="${cl}">${min}<small> min</small></span>${dl}`;
+      }else{
+        const hh=when.getHours().toString().padStart(2,'0'),mm=when.getMinutes().toString().padStart(2,'0');
+        tHtml=`<span>${hh}:${mm}</span>`;
+      }
+      const bc=productBadge[d.line?.product]||'l-def';
+      return`<tr><td><span class="lbadge ${bc}">${name}</span></td><td class="dep-dir">${dest}</td><td class="dep-plt">${plat}</td><td class="dep-t">${tHtml}</td></tr>`;
+    }).join('');
+    const ts=now.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    bb.innerHTML=`<div class="dep-box"><div class="dep-hd"><span class="dep-sn">${curLabel}</span><span class="dep-ts">Stand ${ts}</span></div><table class="dep-tbl"><tbody>${rows}</tbody></table></div>`;
+  }catch(e){
+    bb.innerHTML=`<div class="loading" style="padding:14px;color:var(--dim)">Bus/U-Bahn nicht verfügbar: ${e.message}</div>`;
   }
 }
 
@@ -1277,7 +1416,7 @@ function renderProviders(){
 }
 
 // ── INIT ──────────────────────────────────────────────────
-function refreshAll(){loadWeather();loadForecast();loadDep();loadBikes();}
+function refreshAll(){loadWeather();loadForecast();loadDep();loadBusDep();loadBikes();}
 renderProviders();
 renderGreeting();
 refreshAll();
