@@ -54,8 +54,12 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
 .greeting-sub{font-size:12px;color:var(--muted)}
 
 /* START MAP */
-#start-map{height:200px;border-radius:var(--r);overflow:hidden;border:1px solid var(--border);margin-bottom:14px}
-@media(max-width:640px){#start-map{height:150px}}
+#start-map{height:220px;border-radius:var(--r);overflow:hidden;border:1px solid var(--border);margin-bottom:0}
+@media(max-width:640px){#start-map{height:160px}}
+.route-tabs{display:none;gap:6px;margin-bottom:10px}
+.route-info{display:none;background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--r) var(--r);padding:10px 14px;margin-bottom:14px;font-size:13px;align-items:center;gap:10px}
+.route-info-text{flex:1;font-weight:600}
+.route-info-sub{font-size:11px;color:var(--muted);display:block;margin-top:1px;font-weight:400}
 
 /* DESTINATION ROW */
 .dest-row{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px;transition:border-color .15s}
@@ -330,7 +334,16 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
           </div>
         </div>
 
+        <div id="route-tabs" class="route-tabs">
+          <button class="chip on" onclick="setRouteMode('transit',this)">Bus / ÖPNV</button>
+          <button class="chip"    onclick="setRouteMode('bike',this)">Fahrrad</button>
+          <button class="chip"    onclick="setRouteMode('car',this)">Carsharing</button>
+        </div>
         <div id="start-map"></div>
+        <div id="route-info" class="route-info">
+          <div class="route-info-text"><span id="ri-label">—</span><span id="ri-sub" class="route-info-sub"></span></div>
+          <a id="ri-link" class="rec-link primary" href="#" target="_blank">Öffnen →</a>
+        </div>
 
         <!-- EVENTS IN HAMBURG -->
         <div id="events-card" class="rec-card events" style="display:none">
@@ -713,26 +726,90 @@ function renderGreeting(){
 }
 
 // ── START MAP ─────────────────────────────────────────────
-let startMap=null,startDestMarker=null,startRouteLine=null;
+let startMap=null,startDestMarker=null,startRouteLine=null,routeMode='transit';
+let hhMarker=null;
 
 function initStartMap(){
   if(startMap)return;
   startMap=L.map('start-map',{zoomControl:false,attributionControl:false}).setView(HH,11);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(startMap);
   L.control.zoom({position:'bottomright'}).addTo(startMap);
-  L.circleMarker(HH,{radius:7,fillColor:'#2563eb',color:'#fff',weight:2,fillOpacity:1})
+  hhMarker=L.circleMarker(HH,{radius:7,fillColor:'#2563eb',color:'#fff',weight:2,fillOpacity:1})
     .addTo(startMap).bindPopup('<b>Hamburg</b>');
+}
+
+function setRouteMode(mode,btn){
+  routeMode=mode;
+  document.querySelectorAll('#route-tabs .chip').forEach(c=>c.classList.remove('on'));
+  if(btn)btn.classList.add('on');
+  if(destState)fetchAndDrawRoute();
+}
+
+async function fetchAndDrawRoute(){
+  if(!destState||!startMap)return;
+  if(startRouteLine){startMap.removeLayer(startRouteLine);startRouteLine=null;}
+  const ri=document.getElementById('route-info');
+  ri.style.display='flex';
+  document.getElementById('ri-label').textContent='Route wird berechnet…';
+  document.getElementById('ri-sub').textContent='';
+  document.getElementById('ri-link').style.display='none';
+
+  const osrmProfile=routeMode==='bike'?'cycling':'driving';
+  const[lat1,lon1]=HH,{lat:lat2,lon:lon2}=destState;
+  try{
+    const r=await fetch(
+      `https://router.project-osrm.org/route/v1/${osrmProfile}/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`,
+      {signal:AbortSignal.timeout(9000)}
+    );
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    if(d.code!=='Ok'||!d.routes?.length)throw new Error('Keine Route');
+    const route=d.routes[0];
+    const coords=route.geometry.coordinates.map(([lng,lat])=>[lat,lng]);
+    const distM=route.distance,durS=routeMode==='transit'?route.duration*1.25:route.duration;
+    const color=routeMode==='bike'?'#1a7f37':routeMode==='car'?'#9a6700':'#2563eb';
+    startRouteLine=L.polyline(coords,{color,weight:4,opacity:.75}).addTo(startMap);
+    startMap.fitBounds(startRouteLine.getBounds(),{padding:[20,20]});
+    const distTxt=distM<1000?Math.round(distM)+' m':(distM/1000).toFixed(1)+' km';
+    const mins=Math.round(durS/60);
+    const durTxt=mins<60?mins+' min':`${Math.floor(mins/60)}h ${mins%60}min`;
+    const modeLabel=routeMode==='bike'?'Fahrrad':routeMode==='car'?'Carsharing / Auto':'Bus / ÖPNV';
+    document.getElementById('ri-label').textContent=`${modeLabel} · ${distTxt} · ca. ${durTxt}`;
+    document.getElementById('ri-sub').textContent=routeMode==='transit'?'Geschätzte Reisezeit — exakte Verbindung via HVV':'';
+    const linkEl=document.getElementById('ri-link');
+    linkEl.style.display='';
+    if(routeMode==='transit'){
+      linkEl.href=`https://www.hvv.de/de/fahrplaene/fahrplanauskunft?start=${encodeURIComponent('Hamburg')}&destination=${encodeURIComponent(destState.name)}`;
+      linkEl.textContent='HVV öffnen →';
+    }else{
+      const gmMode=routeMode==='bike'?'bicycling':'driving';
+      linkEl.href=`https://www.google.com/maps/dir/?api=1&origin=${lat1},${lon1}&destination=${lat2},${lon2}&travelmode=${gmMode}`;
+      linkEl.textContent='Google Maps →';
+    }
+  }catch(e){
+    document.getElementById('ri-label').textContent='Route nicht verfügbar';
+    document.getElementById('ri-sub').textContent=e.message;
+    startRouteLine=L.polyline([HH,[lat2,lon2]],{color:'#9198a1',weight:2,dashArray:'5 5',opacity:.5}).addTo(startMap);
+    startMap.fitBounds([[lat1,lon1],[lat2,lon2]],{padding:[24,24]});
+  }
 }
 
 function updateStartMap(){
   if(!startMap)return;
   if(startDestMarker){startMap.removeLayer(startDestMarker);startDestMarker=null;}
   if(startRouteLine){startMap.removeLayer(startRouteLine);startRouteLine=null;}
-  if(!destState){startMap.setView(HH,11);return;}
+  const tabs=document.getElementById('route-tabs');
+  const ri=document.getElementById('route-info');
+  if(!destState){
+    startMap.setView(HH,11);
+    tabs.style.display='none';
+    ri.style.display='none';
+    return;
+  }
   startDestMarker=L.circleMarker([destState.lat,destState.lon],{radius:7,fillColor:'#cf222e',color:'#fff',weight:2,fillOpacity:1})
-    .addTo(startMap).bindPopup(`<b>${destState.name}</b><br>${fmtDist(destState.dist)} von Hamburg`);
-  startRouteLine=L.polyline([HH,[destState.lat,destState.lon]],{color:'#2563eb',weight:2,dashArray:'5 5',opacity:.5}).addTo(startMap);
-  startMap.fitBounds([[HH[0],HH[1]],[destState.lat,destState.lon]],{padding:[24,24]});
+    .addTo(startMap).bindPopup(`<b>${destState.name}</b><br>${fmtDist(destState.dist)} Luftlinie`);
+  tabs.style.display='flex';
+  fetchAndDrawRoute();
 }
 
 // ── STÖRUNGEN ─────────────────────────────────────────────
