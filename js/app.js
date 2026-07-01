@@ -502,12 +502,91 @@ function renderForecast(p){
 
 // ── DESTINATION & MODE OPTIONS ────────────────────────────
 const geoCache={};
+const HH_BBOX='9.5,54.0,10.5,53.3'; // Nominatim viewbox — Hamburg + Umland
+
 function haversine(la1,lo1,la2,lo2){
   const R=6371,d=v=>v*Math.PI/180;
   const a=Math.sin(d(la2-la1)/2)**2+Math.cos(d(la1))*Math.cos(d(la2))*Math.sin(d(lo2-lo1)/2)**2;
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 function fmtDist(km){return km<1?Math.round(km*1e3)+' m':km.toFixed(1)+' km'}
+
+// ── GEOCODING AUTOCOMPLETE ────────────────────────────────
+let suggestTimeout=null,suggestResults=[],activeSug=-1;
+
+function onDestInput(){
+  clearTimeout(suggestTimeout);
+  const q=document.getElementById('dest-in').value.trim();
+  if(q.length<2){hideSuggestions();return;}
+  suggestTimeout=setTimeout(()=>fetchSuggestions(q),280);
+}
+
+function onDestKey(e){
+  const el=document.getElementById('geo-suggestions');
+  if(el.style.display==='none'){if(e.key==='Enter')calcRoute();return;}
+  const items=el.querySelectorAll('.geo-sug');
+  if(e.key==='ArrowDown'){e.preventDefault();activeSug=Math.min(activeSug+1,items.length-1);highlightSug(items);}
+  else if(e.key==='ArrowUp'){e.preventDefault();activeSug=Math.max(activeSug-1,0);highlightSug(items);}
+  else if(e.key==='Enter'){e.preventDefault();activeSug>=0?selectSuggestion(activeSug):calcRoute();}
+  else if(e.key==='Escape'){hideSuggestions();}
+}
+
+function highlightSug(items){items.forEach((el,i)=>el.classList.toggle('active',i===activeSug));}
+
+async function fetchSuggestions(q){
+  try{
+    const params=new URLSearchParams({q,format:'json',limit:5,countrycodes:'de',
+      viewbox:HH_BBOX,addressdetails:1,dedupe:1});
+    const r=await fetch(`/api/geocode?${params}`,{signal:AbortSignal.timeout(5000)});
+    const d=await r.json();
+    suggestResults=Array.isArray(d)?d:[];
+    activeSug=-1;
+    const el=document.getElementById('geo-suggestions');
+    if(!suggestResults.length){hideSuggestions();return;}
+    el.innerHTML=suggestResults.map((res,i)=>{
+      const parts=res.display_name.split(',').map(s=>s.trim());
+      const name=parts.slice(0,2).join(', ');
+      const sub=parts.slice(2,4).filter(Boolean).join(', ');
+      return`<div class="geo-sug" onclick="selectSuggestion(${i})">
+        <div class="geo-sug-name">${name}</div>
+        ${sub?`<div class="geo-sug-sub">${sub}</div>`:''}
+      </div>`;
+    }).join('');
+    el.style.display='';
+  }catch(e){hideSuggestions();}
+}
+
+function hideSuggestions(){
+  document.getElementById('geo-suggestions').style.display='none';
+  suggestResults=[];activeSug=-1;
+}
+
+function selectSuggestion(idx){
+  const res=suggestResults[idx];
+  if(!res)return;
+  const parts=res.display_name.split(',').map(s=>s.trim());
+  const name=parts.slice(0,2).join(', ');
+  document.getElementById('dest-in').value=name;
+  hideSuggestions();
+  const[lat1,lon1]=userPos?[userPos.lat,userPos.lon]:HH;
+  destState={name,lat:+res.lat,lon:+res.lon,dist:haversine(lat1,lon1,+res.lat,+res.lon)};
+  geoCache[name]=res;
+  document.getElementById('gmaps-link').href=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(name)}&travelmode=transit`;
+  renderRec();
+  updateStartMap();
+  calcAllOptions();
+}
+
+// ── SHARING INTEGRATION ───────────────────────────────────
+function findNearestSharing(data,lat,lon){
+  if(!data?.length)return null;
+  const avail=data.filter(s=>s.avail>0&&s.lat&&s.lon);
+  if(!avail.length)return null;
+  return avail.reduce((best,s)=>{
+    const d=haversine(lat,lon,s.lat,s.lon);
+    return(!best||d<best.walkDist)?{...s,walkDist:d}:best;
+  },null);
+}
 
 async function fetchOsrmDuration(profile,lat1,lon1,lat2,lon2){
   const r=await fetch(
@@ -552,28 +631,51 @@ function renderModeOptions(data,dist,p){
   const fmtKm=m=>m<1000?`${Math.round(m)} m`:`${(m/1000).toFixed(1)} km`;
   const opts=[];
 
-  if(data.walkMin&&dist<5){
-    opts.push({mode:'walk',label:'Zu Fuß',dur:fmtMin(data.walkMin),sub:fmtDist(dist)+' · Schätzung',est:true});
+  // Zu Fuß — OSRM foot-Profil wenn verfügbar, sonst Schätzung
+  if(data.walk){
+    const{durMin,distM,real}=data.walk;
+    opts.push({mode:'walk',label:'Zu Fuß',
+      dur:fmtMin(durMin),
+      sub:(distM?fmtKm(distM):fmtDist(dist))+(real?'':' · ~'),
+      est:!real});
   }
+
+  // Fahrrad — OSRM cycling, echte Route + nächste StadtRAD-Station als Hinweis
+  const[lat1b,lon1b]=userPos?[userPos.lat,userPos.lon]:HH;
   if(p.wantBike&&dist<=25){
     if(data.bike){
-      opts.push({mode:'bike',label:'Fahrrad',dur:fmtMin(Math.round(data.bike.durS/60)),sub:fmtKm(data.bike.distM),est:false});
+      const durMin=Math.round(data.bike.durS/60);
+      let sub=fmtKm(data.bike.distM);
+      const sr=findNearestSharing(srData,lat1b,lon1b);
+      if(sr)sub+=` · StadtRAD ${sr.name.replace(/^(StadtRAD\s|Hamburg[\s-]+)/i,'').substring(0,18)} (${fmtDist(sr.walkDist)})`;
+      opts.push({mode:'bike',label:'Fahrrad',dur:fmtMin(durMin),sub,est:false});
     }else{
-      opts.push({mode:'bike',label:'Fahrrad',dur:'—',sub:'nicht verfügbar',est:false});
+      opts.push({mode:'bike',label:'Fahrrad',dur:'—',sub:'Route nicht verfügbar',est:false});
     }
   }
-  if(data.scooterMin&&p.hasScooter&&dist<=12){
-    opts.push({mode:'scooter',label:'E-Scooter',dur:fmtMin(data.scooterMin),sub:fmtDist(dist)+' · Schätzung',est:true});
+
+  // E-Scooter — Cycling-Route @ 20 km/h, explizit als Schätzung markiert
+  // Wird ausgeblendet wenn Fahrrad fast gleiche Zeit hätte (Plausibilitätsprüfung)
+  if(data.scooter){
+    const{durMin,distM}=data.scooter;
+    let sub=(distM?fmtKm(distM):fmtDist(dist))+' · ~20 km/h';
+    const dott=findNearestSharing(dottData,lat1b,lon1b);
+    if(dott)sub+=` · Dott (${fmtDist(dott.walkDist)})`;
+    opts.push({mode:'scooter',label:'E-Scooter',dur:fmtMin(durMin),sub,est:true});
   }
+
+  // ÖPNV — DB HAFAS (deckt HVV-Linien in Hamburg ab, echte Abfahrtszeiten)
+  const isArr=document.getElementById('time-dir')?.value==='arr';
   if(data.transit){
     const{durMin,changes,depStr}=data.transit;
-    const changeTxt=changes>0?` · ${changes} Umstieg${changes>1?'e':''}`:' · Direkt';
-    const isArr=document.getElementById('time-dir')?.value==='arr';
+    const changeTxt=changes>0?` · ${changes}×`:' · direkt';
     const timeTxt=depStr?(isArr?`an ${depStr}`:`ab ${depStr}`):'Jetzt';
     opts.push({mode:'transit',label:'S-Bahn / ÖPNV',dur:fmtMin(durMin),sub:timeTxt+changeTxt,est:false});
   }else{
-    opts.push({mode:'transit',label:'S-Bahn / ÖPNV',dur:'—',sub:'nicht verfügbar',est:false});
+    opts.push({mode:'transit',label:'S-Bahn / ÖPNV',dur:'—',sub:'via HVV öffnen',est:false});
   }
+
+  // Carsharing — OSRM driving, echte Route
   if(data.car&&p.hasCar){
     opts.push({mode:'car',label:'Carsharing',dur:fmtMin(Math.round(data.car.durS/60)),sub:fmtKm(data.car.distM),est:false});
   }
@@ -581,9 +683,8 @@ function renderModeOptions(data,dist,p){
   opts.sort((a,b)=>(b.mode===recommended?1:0)-(a.mode===recommended?1:0));
 
   const modeCol={walk:'var(--muted)',bike:'var(--green)',scooter:'#7c3aed',transit:'var(--blue)',car:'var(--amber)',storm:'var(--red)'};
-
   const reason=getModeReason(wxState.t,wxState.w,wxState.id,p,dist);
-  const timeDir=document.getElementById('time-dir')?.value==='arr'?'Ankunft':'Abfahrt';
+  const timeDir=isArr?'Ankunft':'Abfahrt';
   const timeVal=document.getElementById('dep-time').value;
   const timeLbl=timeVal?` · ${timeDir} ${timeVal}`:'';
 
@@ -600,11 +701,11 @@ function renderModeOptions(data,dist,p){
         style="${isRec?`border-left:3px solid ${col};background:var(--bg);padding-left:9px`:'padding-left:12px'}"
         onclick="setRouteModeFromOpt('${mapMode}')">
         <span class="sdot" style="background:${col};flex-shrink:0"></span>
-        <span class="srow-name" style="min-width:120px">${o.label}</span>
+        <span class="srow-name" style="min-width:110px">${o.label}</span>
         <span style="font-size:13px;font-weight:${isRec?700:400};white-space:nowrap">${o.dur}</span>
-        <span style="font-size:11px;color:var(--dim);margin-left:8px;white-space:nowrap">${o.sub}</span>
-        ${isRec?`<span class="rtag ok" style="margin-left:auto;flex-shrink:0">Empfohlen</span>`:''}
-        ${o.est&&!isRec?`<span style="font-size:10px;color:var(--dim);margin-left:auto">Schätzung</span>`:''}
+        <span style="font-size:11px;color:var(--dim);margin-left:8px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.sub}</span>
+        ${isRec?`<span class="rtag ok" style="flex-shrink:0">Empfohlen</span>`:''}
+        ${o.est&&!isRec?`<span style="font-size:11px;color:var(--dim);flex-shrink:0">~</span>`:''}
       </div>`;
     }).join('')}
   </div>`;
@@ -629,29 +730,47 @@ async function calcAllOptions(){
   el.style.display='';
   el.innerHTML='<div class="loading" style="padding:14px;text-align:center">Verbindungen werden berechnet…</div>';
 
-  const[bikeRes,carRes,transitRes]=await Promise.allSettled([
+  const[bikeRes,carRes,transitRes,walkRes]=await Promise.allSettled([
     (p.wantBike&&dist<=25)?fetchOsrmDuration('cycling',lat1,lon1,lat2,lon2):Promise.reject('skip'),
     p.hasCar?fetchOsrmDuration('driving',lat1,lon1,lat2,lon2):Promise.reject('skip'),
     fetchTransitDuration(lat1,lon1,lat2,lon2,depTimeISO),
+    dist<=4?fetchOsrmDuration('foot',lat1,lon1,lat2,lon2):Promise.reject('skip'),
   ]);
 
-  const walkMin=dist<5?Math.round(dist/5*60):null;
-  let scooterMin=null;
-  if(p.hasScooter&&dist<=12&&bikeRes.status==='fulfilled'){
-    scooterMin=Math.round(bikeRes.value.durS/60*0.68);
+  // Zu Fuß: echtes OSRM foot-Profil, Fallback Haversine / 5 km/h
+  let walkData=null;
+  if(walkRes.status==='fulfilled'){
+    walkData={durMin:Math.round(walkRes.value.durS/60),distM:walkRes.value.distM,real:true};
+  }else if(dist<=4){
+    walkData={durMin:Math.round(dist/5*60),distM:null,real:false};
+  }
+
+  // E-Scooter: Cycling-Route @ explizit 20 km/h (kein 0.68-Faktor)
+  // Plausibilitätsprüfung: überspringen wenn Fahrrad-Zeit fast identisch (≤3 min Unterschied)
+  let scooterData=null;
+  if(p.hasScooter&&dist<=12){
+    const bikeDistM=bikeRes.status==='fulfilled'?bikeRes.value.distM:null;
+    const distKm=(bikeDistM??dist*1000)/1000;
+    const scooterMin=Math.round(distKm/20*60);
+    const bikeMin=bikeRes.status==='fulfilled'?Math.round(bikeRes.value.durS/60):null;
+    const tooSimilar=p.wantBike&&bikeMin!==null&&Math.abs(bikeMin-scooterMin)<=3;
+    if(!tooSimilar){
+      scooterData={durMin:scooterMin,distM:bikeDistM,real:!!bikeDistM};
+    }
   }
 
   renderModeOptions({
     bike:bikeRes.status==='fulfilled'?bikeRes.value:null,
     car:carRes.status==='fulfilled'?carRes.value:null,
     transit:transitRes.status==='fulfilled'?transitRes.value:null,
-    walkMin,
-    scooterMin,
+    walk:walkData,
+    scooter:scooterData,
   },dist,p);
 }
 
 async function calcRoute(){
   const q=document.getElementById('dest-in').value.trim();
+  hideSuggestions();
   if(!q){
     destState=null;
     document.getElementById('mode-options').style.display='none';
@@ -662,12 +781,15 @@ async function calcRoute(){
   try{
     let geo=geoCache[q];
     if(!geo){
-      const r=await fetch(`/api/geocode?q=${encodeURIComponent(q)}&format=json&limit=1`,{signal:AbortSignal.timeout(6000)});
+      const params=new URLSearchParams({q,format:'json',limit:1,countrycodes:'de',
+        viewbox:HH_BBOX,addressdetails:1});
+      const r=await fetch(`/api/geocode?${params}`,{signal:AbortSignal.timeout(6000)});
       const d=await r.json();
       if(!d||!d[0])throw new Error('Ort nicht gefunden');
       geo=d[0];geoCache[q]=geo;
     }
-    destState={name:q,lat:+geo.lat,lon:+geo.lon,dist:haversine(HH[0],HH[1],+geo.lat,+geo.lon)};
+    const[lat1,lon1]=userPos?[userPos.lat,userPos.lon]:HH;
+    destState={name:q,lat:+geo.lat,lon:+geo.lon,dist:haversine(lat1,lon1,+geo.lat,+geo.lon)};
     document.getElementById('gmaps-link').href=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}&travelmode=transit`;
     renderRec();
     updateStartMap();

@@ -43,13 +43,18 @@
           <div id="greeting-sub" class="greeting-sub">Hamburg</div>
         </div>
 
-        <div class="dest-row">
-          <div class="dest-prefix">Wohin?</div>
-          <input id="dest-in" class="dest-in" type="text"
-            placeholder="Ziel — z.B. Altona, Berlin, Lübeck …"
-            onkeydown="if(event.key==='Enter')calcRoute()">
-          <button id="loc-btn" class="dest-loc" onclick="getLocation()" title="Mein Standort als Startpunkt">◎</button>
-          <button class="dest-go" onclick="calcRoute()">Los</button>
+        <div class="dest-wrap">
+          <div class="dest-row">
+            <div class="dest-prefix">Wohin?</div>
+            <input id="dest-in" class="dest-in" type="text"
+              placeholder="Ziel — z.B. Altona, Reeperbahn, HafenCity …"
+              oninput="onDestInput()"
+              onkeydown="onDestKey(event)"
+              autocomplete="off">
+            <button id="loc-btn" class="dest-loc" onclick="getLocation()" title="Mein Standort als Startpunkt">◎</button>
+            <button class="dest-go" onclick="calcRoute()">Los</button>
+          </div>
+          <div id="geo-suggestions" class="geo-suggestions" style="display:none"></div>
         </div>
         <div class="time-row">
           <span class="time-icon">🕐</span>
