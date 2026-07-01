@@ -258,19 +258,29 @@ async function fetchTransitRoute(lat1,lon1,lat2,lon2){
     const[fromArr,toArr]=await Promise.all([fromR.json(),toR.json()]);
     if(!fromArr?.length||!toArr?.length)throw new Error('Keine Haltestellen gefunden');
     const jR=await fetch(
-      `https://v5.db.transport.rest/journeys?from=${fromArr[0].id}&to=${toArr[0].id}&results=1&stopovers=true`,
+      `https://v5.db.transport.rest/journeys?from=${fromArr[0].id}&to=${toArr[0].id}&results=1&stopovers=true&polylines=true`,
       {signal:AbortSignal.timeout(12000)}
     );
     const jD=await jR.json();
     if(!jD.journeys?.length)throw new Error('Keine Verbindung gefunden');
     const journey=jD.journeys[0];
-    const legs=journey.legs.filter(l=>!l.walking&&l.stopovers?.length>=2);
+    const legs=journey.legs.filter(l=>!l.walking&&(l.stopovers?.length>=2||l.polyline));
     legs.forEach(leg=>{
       const color=productColor[leg.line?.product]||'#2563eb';
-      const coords=leg.stopovers.map(s=>[s.stop?.location?.latitude,s.stop?.location?.longitude]).filter(c=>c[0]&&c[1]);
+      // Echte Gleisgeometrie wenn verfügbar, sonst Haltestellen-Punkte verbinden
+      let coords;
+      if(leg.polyline?.features?.length){
+        coords=leg.polyline.features
+          .filter(f=>f.geometry?.coordinates?.length===2)
+          .map(f=>[f.geometry.coordinates[1],f.geometry.coordinates[0]]);
+      }else{
+        coords=(leg.stopovers||[])
+          .map(s=>[s.stop?.location?.latitude,s.stop?.location?.longitude])
+          .filter(c=>c[0]&&c[1]);
+      }
       if(coords.length>=2){
         L.polyline(coords,{color,weight:4,opacity:.8}).addTo(routeFG);
-        leg.stopovers.slice(1,-1).forEach(s=>{
+        (leg.stopovers||[]).slice(1,-1).forEach(s=>{
           if(s.stop?.location)
             L.circleMarker([s.stop.location.latitude,s.stop.location.longitude],
               {radius:3,fillColor:color,color:'#fff',weight:1,fillOpacity:.9})
@@ -294,7 +304,7 @@ async function fetchTransitRoute(lat1,lon1,lat2,lon2){
     document.getElementById('ri-sub').textContent=`${fromArr[0].name} → ${toArr[0].name}`;
   }catch(e){
     try{
-      const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`,{signal:AbortSignal.timeout(8000)});
+      const r=await fetch(`https://routing.openstreetmap.de/routed-car/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`,{signal:AbortSignal.timeout(8000)});
       const d=await r.json();
       if(d.code==='Ok'&&d.routes?.length){
         const coords=d.routes[0].geometry.coordinates.map(([lng,lat])=>[lat,lng]);
