@@ -62,7 +62,8 @@ function show(id,btn){
 
 // ── WEATHER ───────────────────────────────────────────────
 const OWM='e753f02c4f2f0f94cf78f4907344dca5',HH=[53.5753,10.0153];
-let wxState=null,fcData=[];
+let wxState=null,wxStatus='init',fcData=[];
+// wxStatus: 'init' → nie geladen  |  'loading'  |  'ok'  |  'error' (nie erfolgreich)
 
 function wxIcon(id){
   if(id<300)return'⛈';if(id<400)return'🌦';
@@ -72,18 +73,31 @@ function wxIcon(id){
 }
 
 async function loadWeather(){
+  const firstLoad=wxStatus==='init';
+  wxStatus='loading';
   try{
     const r=await fetch(`/api/weather?lat=${HH[0]}&lon=${HH[1]}&appid=${OWM}&units=metric&lang=de`,{signal:AbortSignal.timeout(8000)});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const wx=await r.json();
     wxState={t:Math.round(wx.main.temp),w:Math.round(wx.wind.speed*3.6),h:wx.main.humidity,id:wx.weather[0].id,desc:wx.weather[0].description};
+    wxStatus='ok';
     document.getElementById('wx-pill').innerHTML=`${wxIcon(wxState.id)} <b>${wxState.t}°C</b> &middot; ${wxState.w} km/h`;
     renderRec();
     renderGreeting();
     renderInfoCards();
   }catch(e){
     console.error('weather',e);
-    document.getElementById('wx-pill').textContent='Wetter nicht verfügbar';
+    if(firstLoad){
+      // Erster Load fehlgeschlagen — wxState bleibt null, Fehlerzustand überall
+      wxStatus='error';
+      document.getElementById('wx-pill').textContent='Wetter nicht verfügbar';
+      renderRec(); // zeigt Fehler im rec-card, nicht "Lädt…"
+    }else{
+      // Refresh fehlgeschlagen — alte Daten behalten, kleines Warnsignal im Header
+      wxStatus='ok'; // wxState ist noch gültig
+      document.getElementById('wx-pill').innerHTML=
+        `${wxIcon(wxState.id)} <b>${wxState.t}°C</b> &middot; ${wxState.w} km/h <span title="Daten veraltet" style="opacity:.5;font-size:11px">⚠</span>`;
+    }
   }
 }
 
@@ -333,7 +347,18 @@ function getMode(t,w,id,p,dist){
 let destState=null;
 
 function renderRec(){
-  if(!wxState)return;
+  if(!wxState){
+    // Fehlerzustand: rec-card zeigt dasselbe wie der Header — kein "Lädt…" wenn header "nicht verfügbar" sagt
+    if(wxStatus==='error'){
+      document.getElementById('rec-card').className='rec-card transit';
+      document.getElementById('rec-mode').textContent='—';
+      document.getElementById('rec-title').textContent='Wetter nicht verfügbar';
+      document.getElementById('rec-detail').textContent='Verbindung prüfen oder Seite neu laden (↻).';
+      document.getElementById('rec-tags').innerHTML='<span class="rtag bad">Kein Signal</span>';
+      document.getElementById('rec-dist').style.display='none';
+    }
+    return;
+  }
   const{t,w,id}=wxState,p=lP(),dist=destState?destState.dist:null;
   const mode=getMode(t,w,id,p,dist),m=MODES[mode];
   document.getElementById('rec-card').className='rec-card '+m.cls;
