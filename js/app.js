@@ -148,6 +148,7 @@ function renderGreeting(){
 // ── START MAP ─────────────────────────────────────────────
 let startMap=null,startDestMarker=null,routeMode='transit';
 let hhMarker=null,routeFG=null,userPos=null;
+let srStartFG=null,dottStartFG=null,startSharingLoaded=false;
 
 function getLocation(){
   const btn=document.getElementById('loc-btn');
@@ -282,7 +283,13 @@ async function fetchTransitRoute(lat1,lon1,lat2,lon2){
     const durTxt=mins<60?mins+' min':`${Math.floor(mins/60)}h ${mins%60}min`;
     const changes=Math.max(0,legs.length-1);
     const changesTxt=changes?' · '+changes+' Umstieg'+(changes>1?'e':''):'';
-    document.getElementById('ri-label').textContent='Bus / ÖPNV · ca. '+durTxt+changesTxt;
+    const fmt2=d=>d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    const lineBadges=legs.map(l=>{
+      const col=productColor[l.line?.product]||'#2563eb';
+      const name=l.line?.name||l.line?.product||'?';
+      return`<span style="display:inline-block;background:${col};color:#fff;border-radius:3px;padding:1px 6px;font-size:11px;font-weight:700;margin-right:3px;vertical-align:middle">${name}</span>`;
+    }).join('');
+    document.getElementById('ri-label').innerHTML=`${lineBadges}<span style="vertical-align:middle"> ${fmt2(dep)}–${fmt2(arr)} · ${durTxt}${changesTxt}</span>`;
     document.getElementById('ri-sub').textContent=`${fromArr[0].name} → ${toArr[0].name}`;
   }catch(e){
     try{
@@ -321,6 +328,48 @@ function updateStartMap(){
     .addTo(startMap).bindPopup(`<b>${destState.name}</b><br>${fmtDist(destState.dist)} Luftlinie`);
   tabs.style.display='flex';
   fetchAndDrawRoute();
+}
+
+async function toggleStartSharing(type,btn){
+  const isOn=btn.classList.toggle('on');
+  if(!startMap)return;
+  if(isOn&&!startSharingLoaded){
+    btn.textContent='…';
+    await Promise.allSettled([loadStadtRAD(),loadDott()]);
+    startSharingLoaded=true;
+    buildStartMapSharing();
+    document.getElementById('msl-sr').textContent='🚲';
+    document.getElementById('msl-dott').textContent='🛴';
+  }
+  if(type==='stadtrad'){
+    if(isOn&&srStartFG)srStartFG.addTo(startMap);
+    else if(srStartFG)startMap.removeLayer(srStartFG);
+  }else{
+    if(isOn&&dottStartFG)dottStartFG.addTo(startMap);
+    else if(dottStartFG)startMap.removeLayer(dottStartFG);
+  }
+}
+
+function buildStartMapSharing(){
+  if(!startMap)return;
+  srStartFG=L.featureGroup();
+  srData.forEach(s=>{
+    const col=s.avail>5?'#1a7f37':s.avail>0?'#9a6700':'#cf222e';
+    const r=Math.max(4,Math.min(9,3+s.avail/4));
+    L.circleMarker([s.lat,s.lon],{radius:r,fillColor:col,color:'#fff',weight:1,fillOpacity:.85})
+      .bindPopup(`<b>${s.name}</b><br>🚲 ${s.avail} Räder · ${s.docks} Docks frei`)
+      .addTo(srStartFG);
+  });
+  if(document.getElementById('msl-sr')?.classList.contains('on'))srStartFG.addTo(startMap);
+
+  dottStartFG=L.featureGroup();
+  dottData.forEach(s=>{
+    const col=s.avail>0?'#7c3aed':'#9198a1';
+    L.circleMarker([s.lat,s.lon],{radius:5,fillColor:col,color:'#fff',weight:1,fillOpacity:.8})
+      .bindPopup(`<b>${s.name||'Dott-Zone'}</b><br>🛴 ${s.scooters} Scooter · 🚲 ${s.bikes} Bikes`)
+      .addTo(dottStartFG);
+  });
+  if(document.getElementById('msl-dott')?.classList.contains('on'))dottStartFG.addTo(startMap);
 }
 
 // ── RECOMMENDATION ────────────────────────────────────────
@@ -983,21 +1032,32 @@ async function loadStadtRAD(){
     const{data:{stations:inf=[]}}=await iR.json();
     const{data:{stations:sta=[]}}=await sR.json();
     const iMap=Object.fromEntries(inf.map(s=>[s.station_id,s]));
-    srMarks.forEach(m=>leafMap.removeLayer(m));srMarks=[];
     srData=sta.map(s=>{
       const i=iMap[s.station_id]||{};
       const avail=s.num_bikes_available||0;
       const docks=s.num_docks_available||0;
       return{...i,avail,docks,detail:`${avail} Räder · ${docks} frei`,name:i.name||s.station_id};
     }).filter(s=>s.lat&&s.lon);
-    srData.forEach(s=>{
-      const col=s.avail>5?'#1a7f37':s.avail>0?'#9a6700':'#cf222e';
-      const r=Math.max(5,Math.min(10,4+s.avail/4));
-      const m=L.circleMarker([s.lat,s.lon],{radius:r,fillColor:col,color:'#fff',weight:1.5,fillOpacity:.9});
-      m.bindPopup(`<b>${s.name}</b><br>🚲 ${s.avail} verfügbar · ${s.docks} Docks frei<br><small>Kapazität: ${s.capacity||'?'}</small>`);
-      srMarks.push(m);
-      if(bikeTab==='stadtrad')m.addTo(leafMap);
-    });
+    if(leafMap){
+      srMarks.forEach(m=>leafMap.removeLayer(m));srMarks=[];
+      srData.forEach(s=>{
+        const col=s.avail>5?'#1a7f37':s.avail>0?'#9a6700':'#cf222e';
+        const r=Math.max(5,Math.min(10,4+s.avail/4));
+        const m=L.circleMarker([s.lat,s.lon],{radius:r,fillColor:col,color:'#fff',weight:1.5,fillOpacity:.9});
+        m.bindPopup(`<b>${s.name}</b><br>🚲 ${s.avail} verfügbar · ${s.docks} Docks frei<br><small>Kapazität: ${s.capacity||'?'}</small>`);
+        srMarks.push(m);
+        if(bikeTab==='stadtrad')m.addTo(leafMap);
+      });
+    }
+    if(startSharingLoaded&&srStartFG){
+      srStartFG.clearLayers();
+      srData.forEach(s=>{
+        const col=s.avail>5?'#1a7f37':s.avail>0?'#9a6700':'#cf222e';
+        L.circleMarker([s.lat,s.lon],{radius:Math.max(4,Math.min(9,3+s.avail/4)),fillColor:col,color:'#fff',weight:1,fillOpacity:.85})
+          .bindPopup(`<b>${s.name}</b><br>🚲 ${s.avail} Räder · ${s.docks} Docks frei`)
+          .addTo(srStartFG);
+      });
+    }
   }catch(e){console.error('stadtrad:',e);}
 }
 
@@ -1010,20 +1070,31 @@ async function loadDott(){
     const{data:{stations:inf=[]}}=await iR.json();
     const{data:{stations:sta=[]}}=await sR.json();
     const iMap=Object.fromEntries(inf.map(s=>[s.station_id,s]));
-    dottMarks.forEach(m=>leafMap.removeLayer(m));dottMarks=[];
     dottData=sta.map(s=>{
       const i=iMap[s.station_id]||{};
       const bikes=(s.vehicle_types_available||[]).find(v=>v.vehicle_type_id==='dott_bicycle')?.count||0;
       const scooters=(s.vehicle_types_available||[]).find(v=>v.vehicle_type_id==='dott_scooter')?.count||0;
       return{...i,avail:bikes+scooters,bikes,scooters,detail:bikes?`${bikes}🚲 ${scooters}🛴`:'Scooter',name:i.name||'Zone'};
     }).filter(s=>s.lat&&s.lon);
-    dottData.forEach(s=>{
-      const col=s.avail>5?'#1d4ed8':s.avail>0?'#7c3aed':'#9198a1';
-      const m=L.circleMarker([s.lat,s.lon],{radius:5,fillColor:col,color:'#fff',weight:1.5,fillOpacity:.8});
-      m.bindPopup(`<b>${s.name}</b><br>🚲 ${s.bikes} Bikes · 🛴 ${s.scooters} Scooter`);
-      dottMarks.push(m);
-      if(bikeTab==='dott')m.addTo(leafMap);
-    });
+    if(leafMap){
+      dottMarks.forEach(m=>leafMap.removeLayer(m));dottMarks=[];
+      dottData.forEach(s=>{
+        const col=s.avail>5?'#1d4ed8':s.avail>0?'#7c3aed':'#9198a1';
+        const m=L.circleMarker([s.lat,s.lon],{radius:5,fillColor:col,color:'#fff',weight:1.5,fillOpacity:.8});
+        m.bindPopup(`<b>${s.name}</b><br>🚲 ${s.bikes} Bikes · 🛴 ${s.scooters} Scooter`);
+        dottMarks.push(m);
+        if(bikeTab==='dott')m.addTo(leafMap);
+      });
+    }
+    if(startSharingLoaded&&dottStartFG){
+      dottStartFG.clearLayers();
+      dottData.forEach(s=>{
+        const col=s.avail>0?'#7c3aed':'#9198a1';
+        L.circleMarker([s.lat,s.lon],{radius:5,fillColor:col,color:'#fff',weight:1,fillOpacity:.8})
+          .bindPopup(`<b>${s.name||'Dott-Zone'}</b><br>🛴 ${s.scooters} Scooter · 🚲 ${s.bikes} Bikes`)
+          .addTo(dottStartFG);
+      });
+    }
   }catch(e){console.error('dott:',e);}
 }
 

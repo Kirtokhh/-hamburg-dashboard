@@ -85,7 +85,13 @@
           <button class="chip"    onclick="setRouteMode('bike',this)">Fahrrad</button>
           <button class="chip"    onclick="setRouteMode('car',this)">Carsharing</button>
         </div>
-        <div id="start-map"></div>
+        <div class="map-wrap">
+          <div id="start-map"></div>
+          <div class="map-layer-ctrl">
+            <button class="map-layer-btn" id="msl-sr" onclick="toggleStartSharing('stadtrad',this)" title="StadtRAD-Stationen">🚲</button>
+            <button class="map-layer-btn" id="msl-dott" onclick="toggleStartSharing('dott',this)" title="Dott E-Scooter">🛴</button>
+          </div>
+        </div>
         <div id="route-info" class="route-info">
           <div class="route-info-text"><span id="ri-label">—</span><span id="ri-sub" class="route-info-sub"></span></div>
           <a id="ri-link" class="rec-link primary" href="#" target="_blank">Öffnen →</a>
