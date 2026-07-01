@@ -243,9 +243,20 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
 .loading{padding:30px;text-align:center;color:var(--dim);font-size:13px}
 .err{padding:10px 14px;border-radius:var(--r);background:#fff5f5;border:1px solid #fca5a5;font-size:13px;color:var(--red)}
 
+/* TIME ROW */
+.time-row{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--bg);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--r) var(--r);margin-bottom:14px}
+.time-icon{font-size:13px;opacity:.5}
+.time-dir{border:none;background:none;font-size:12px;color:var(--muted);cursor:pointer;padding:0;outline:none;font-family:inherit}
+.time-dir:focus{color:var(--blue)}
+.time-now-lbl{font-size:12px;font-weight:600;color:var(--blue);pointer-events:none}
+.dest-row{border-radius:var(--r) var(--r) 0 0;margin-bottom:0}
+
 /* TIME INPUT */
-.dest-time{flex:0 0 auto;width:100px;border:none;border-left:1px solid var(--border);background:none;padding:0 10px;font-size:13px;color:var(--text);font-family:inherit;outline:none;cursor:pointer}
+.dest-time{flex:0 0 auto;width:90px;border:none;background:none;padding:0;font-size:12px;color:var(--text);font-family:inherit;outline:none;cursor:pointer}
 .dest-time::-webkit-calendar-picker-indicator{opacity:.45;cursor:pointer}
+
+/* NEUTRAL REC CARD (weather context, no recommendation command) */
+.rec-card.neutral{border-left-color:var(--border)}
 
 /* MODE OPTIONS */
 .srow.opt-rec{font-weight:600}

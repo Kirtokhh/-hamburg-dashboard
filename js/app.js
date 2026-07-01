@@ -346,9 +346,39 @@ function getMode(t,w,id,p,dist){
 
 let destState=null;
 
+function updateTimeLbl(){
+  const v=document.getElementById('dep-time').value;
+  document.getElementById('time-now-lbl').style.display=v?'none':'';
+}
+
+function getModeReason(t,w,id,p,dist){
+  const rain=id>=300&&id<700,heavy=id>=500&&id<600,thunder=id<300,snow=id>=600&&id<700;
+  const mode=getMode(t,w,id,p,dist);
+  if(mode==='storm')return'Gewitter — ÖPNV am sichersten';
+  if(mode==='walk')return`Kurze Strecke${dist!==null?' ('+fmtDist(dist)+')':''}`;
+  if(mode==='bike'){
+    if(t>=16&&t<=26&&w<=14&&!rain)return'Perfektes Radwetter';
+    const r=[];
+    if(!rain)r.push('Kein Regen');
+    if(w<=14)r.push('Wenig Wind');
+    if(t>=12&&t<=28)r.push(`${t}°C`);
+    return r.join(' · ')||'Gutes Radwetter';
+  }
+  if(mode==='scooter')return'Kein Starkregen · kurze Strecke';
+  if(mode==='car')return w>30?`Starker Wind (${w} km/h)`:dist!==null&&dist>30?`Weite Strecke (${fmtDist(dist)})`:'Weite Strecke';
+  // transit reasons
+  if(thunder)return'Gewitter';
+  if(snow)return'Schnee';
+  if(heavy)return'Starkregen';
+  if(rain&&!p.rainOk)return'Regen';
+  if(t<p.tMin)return`Zu kalt (${t}°C)`;
+  if(t>p.tMax)return`Zu heiß (${t}°C)`;
+  if(w>p.wMax)return`Zu viel Wind (${w} km/h)`;
+  return'ÖPNV empfohlen';
+}
+
 function renderRec(){
   if(!wxState){
-    // Fehlerzustand: rec-card zeigt dasselbe wie der Header — kein "Lädt…" wenn header "nicht verfügbar" sagt
     if(wxStatus==='error'){
       document.getElementById('rec-card').className='rec-card transit';
       document.getElementById('rec-mode').textContent='—';
@@ -359,39 +389,55 @@ function renderRec(){
     }
     return;
   }
-  const{t,w,id}=wxState,p=lP(),dist=destState?destState.dist:null;
-  const mode=getMode(t,w,id,p,dist),m=MODES[mode];
-  document.getElementById('rec-card').className='rec-card '+m.cls;
-  document.getElementById('rec-mode').textContent=m.label;
-  let title=m.title;
-  if(mode==='bike'){
-    if(t>=16&&t<=26&&w<=14&&id>=800)title='Perfektes Radwetter!';
-    else if(t>28)title='Warm — lieber E-Scooter oder ÖPNV?';
-  }else if(mode==='transit'&&p.wantBike){
-    if(t<p.tMin)title=`Zu kalt für Rad (${t}°C < ${p.tMin}°C)`;
-    else if(t>p.tMax)title=`Zu heiß für Rad (${t}°C > ${p.tMax}°C)`;
-    else if(id>=300&&id<700)title='Regen — ÖPNV empfohlen';
-    else if(w>p.wMax)title=`Zu viel Wind (${w} km/h)`;
+  const{t,w,id,desc,h}=wxState,p=lP();
+
+  if(!destState){
+    // Neutraler Wetterkontext — kein Befehl, nur Information
+    document.getElementById('rec-card').className='rec-card neutral';
+    document.getElementById('rec-mode').textContent='Wetter Hamburg';
+    document.getElementById('rec-title').textContent=`${t}°C · ${desc.charAt(0).toUpperCase()+desc.slice(1)}`;
+    document.getElementById('rec-detail').textContent=`Wind ${w} km/h · Luftfeuchtigkeit ${h}%`;
+    document.getElementById('rec-dist').style.display='none';
+    const tags=[];
+    if(id<300)tags.push({t:'Gewitter',c:'bad'});
+    else if(id>=500&&id<600)tags.push({t:'Starkregen',c:'bad'});
+    else if(id>=300&&id<600)tags.push({t:'Regen',c:'warn'});
+    else if(id>=600&&id<700)tags.push({t:'Schnee',c:'warn'});
+    else if(id===800)tags.push({t:'Sonnig',c:'ok'});
+    else if(id<=801)tags.push({t:'Leicht bewölkt',c:'ok'});
+    else tags.push({t:'Bewölkt',c:'warn'});
+    if(w>40)tags.push({t:`Sturm ${w} km/h`,c:'bad'});
+    else if(w>25)tags.push({t:`Wind ${w} km/h`,c:'warn'});
+    else tags.push({t:'Ruhiger Wind',c:'ok'});
+    if(t>=16&&t<=26)tags.push({t:`${t}°C angenehm`,c:'ok'});
+    else if(t<6)tags.push({t:`Kalt ${t}°C`,c:'bad'});
+    else if(t<10)tags.push({t:`Kühl ${t}°C`,c:'warn'});
+    else if(t>32)tags.push({t:`Sehr heiß ${t}°C`,c:'bad'});
+    else if(t>28)tags.push({t:`Heiß ${t}°C`,c:'warn'});
+    document.getElementById('rec-tags').innerHTML=tags.map(x=>`<span class="rtag ${x.c}">${x.t}</span>`).join('');
+    renderForecast(p);
+    return;
   }
-  document.getElementById('rec-title').textContent=title;
-  const parts=[];
-  if(destState)parts.push(`→ ${destState.name}`);
-  parts.push(`${t}°C · ${wxState.desc} · Wind ${w} km/h`);
-  document.getElementById('rec-detail').textContent=parts.join(' · ');
+
+  // Mit Ziel — zeigt Empfehlung als Antwort auf die Suchanfrage
+  const dist=destState.dist;
+  const mode=getMode(t,w,id,p,dist),m=MODES[mode];
+  const reason=getModeReason(t,w,id,p,dist);
+  document.getElementById('rec-card').className='rec-card '+m.cls;
+  document.getElementById('rec-mode').textContent='Heute empfohlen';
+  document.getElementById('rec-title').textContent=`${m.label} → ${destState.name}`;
+  document.getElementById('rec-detail').textContent=`${reason} · ${t}°C · Wind ${w} km/h`;
   const distEl=document.getElementById('rec-dist');
-  if(destState){distEl.style.display='';distEl.textContent=fmtDist(destState.dist)+' Luftlinie';}
-  else distEl.style.display='none';
+  distEl.style.display='';
+  distEl.textContent=fmtDist(dist)+' Luftlinie';
   const tags=[];
-  if(t>=16&&t<=26)tags.push({t:`${t}°C ideal`,c:'ok'});
-  else if(t<p.tMin&&p.wantBike)tags.push({t:`Zu kalt ${t}°C`,c:'bad'});
-  else if(t>p.tMax&&p.wantBike)tags.push({t:`Zu heiß ${t}°C`,c:'bad'});
+  if(id<300)tags.push({t:'Gewitter',c:'bad'});
+  else if(id>=300&&id<600)tags.push({t:'Regen',c:'warn'});
+  else tags.push({t:'Kein Regen',c:'ok'});
   if(w<=14)tags.push({t:'Wenig Wind',c:'ok'});
   else if(w>p.wMax&&p.wantBike)tags.push({t:`Wind ${w} km/h`,c:'bad'});
-  if(id<300)tags.push({t:'Gewitter',c:'bad'});
-  else if(id>=300&&id<700)tags.push({t:'Regen',c:'warn'});
-  else tags.push({t:'Kein Regen',c:'ok'});
+  else if(w>25)tags.push({t:`Wind ${w} km/h`,c:'warn'});
   if(!p.wantBike)tags.push({t:'Fahrrad aus',c:'warn'});
-  if(!p.hasCar)tags.push({t:'Kein Auto',c:'warn'});
   document.getElementById('rec-tags').innerHTML=tags.map(x=>`<span class="rtag ${x.c}">${x.t}</span>`).join('');
   renderForecast(p);
 }
@@ -481,8 +527,9 @@ async function fetchTransitDuration(lat1,lon1,lat2,lon2,depTimeISO){
   ]);
   const[fromArr,toArr]=await Promise.all([fromR.json(),toR.json()]);
   if(!fromArr?.length||!toArr?.length)throw new Error('Keine Haltestellen');
+  const isArr=document.getElementById('time-dir')?.value==='arr';
   const params=new URLSearchParams({from:fromArr[0].id,to:toArr[0].id,results:1,stopovers:false});
-  if(depTimeISO)params.set('departure',depTimeISO);
+  if(depTimeISO)params.set(isArr?'arrival':'departure',depTimeISO);
   const jR=await fetch(`https://v5.db.transport.rest/journeys?${params}`,{signal:AbortSignal.timeout(12000)});
   if(!jR.ok)throw new Error('HTTP '+jR.status);
   const jD=await jR.json();
@@ -521,7 +568,9 @@ function renderModeOptions(data,dist,p){
   if(data.transit){
     const{durMin,changes,depStr}=data.transit;
     const changeTxt=changes>0?` · ${changes} Umstieg${changes>1?'e':''}`:' · Direkt';
-    opts.push({mode:'transit',label:'S-Bahn / ÖPNV',dur:fmtMin(durMin),sub:(depStr?`ab ${depStr}`:'Jetzt')+changeTxt,est:false});
+    const isArr=document.getElementById('time-dir')?.value==='arr';
+    const timeTxt=depStr?(isArr?`an ${depStr}`:`ab ${depStr}`):'Jetzt';
+    opts.push({mode:'transit',label:'S-Bahn / ÖPNV',dur:fmtMin(durMin),sub:timeTxt+changeTxt,est:false});
   }else{
     opts.push({mode:'transit',label:'S-Bahn / ÖPNV',dur:'—',sub:'nicht verfügbar',est:false});
   }
@@ -533,8 +582,16 @@ function renderModeOptions(data,dist,p){
 
   const modeCol={walk:'var(--muted)',bike:'var(--green)',scooter:'#7c3aed',transit:'var(--blue)',car:'var(--amber)',storm:'var(--red)'};
 
+  const reason=getModeReason(wxState.t,wxState.w,wxState.id,p,dist);
+  const timeDir=document.getElementById('time-dir')?.value==='arr'?'Ankunft':'Abfahrt';
+  const timeVal=document.getElementById('dep-time').value;
+  const timeLbl=timeVal?` · ${timeDir} ${timeVal}`:'';
+
   el.innerHTML=`<div class="sbox">
-    <div class="sbox-hd">Heute empfohlen → ${destState.name}</div>
+    <div class="sbox-hd" style="display:flex;flex-direction:column;gap:2px">
+      <span>Reisezeiten → ${destState.name}${timeLbl}</span>
+      <span style="font-size:11px;color:var(--muted);font-weight:400">${reason}</span>
+    </div>
     ${opts.map(o=>{
       const isRec=o.mode===recommended;
       const col=modeCol[o.mode]||'var(--muted)';

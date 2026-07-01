@@ -43,29 +43,37 @@
           <div id="greeting-sub" class="greeting-sub">Hamburg</div>
         </div>
 
-        <div id="rec-card" class="rec-card transit">
+        <div class="dest-row">
+          <div class="dest-prefix">Wohin?</div>
+          <input id="dest-in" class="dest-in" type="text"
+            placeholder="Ziel — z.B. Altona, Berlin, Lübeck …"
+            onkeydown="if(event.key==='Enter')calcRoute()">
+          <button id="loc-btn" class="dest-loc" onclick="getLocation()" title="Mein Standort als Startpunkt">◎</button>
+          <button class="dest-go" onclick="calcRoute()">Los</button>
+        </div>
+        <div class="time-row">
+          <span class="time-icon">🕐</span>
+          <select id="time-dir" class="time-dir">
+            <option value="dep">Abfahrt</option>
+            <option value="arr">Ankunft</option>
+          </select>
+          <input id="dep-time" class="dest-time" type="time" title="Uhrzeit leer lassen für sofortige Abfahrt" oninput="updateTimeLbl()">
+          <span id="time-now-lbl" class="time-now-lbl">Jetzt</span>
+        </div>
+
+        <div id="mode-options" style="display:none;margin-bottom:14px"></div>
+
+        <div id="rec-card" class="rec-card neutral">
           <div class="rec-top">
             <div class="rec-body">
-              <div id="rec-mode" class="rec-mode">Lädt…</div>
-              <div id="rec-title" class="rec-title">Wetterdaten werden geladen</div>
+              <div id="rec-mode" class="rec-mode">Wetter Hamburg</div>
+              <div id="rec-title" class="rec-title">Wird geladen…</div>
               <div id="rec-detail" class="rec-detail"></div>
               <div id="rec-tags" class="rec-tags"></div>
             </div>
             <div id="rec-dist" class="rec-dist" style="display:none"></div>
           </div>
         </div>
-
-        <div class="dest-row">
-          <div class="dest-prefix">Wohin?</div>
-          <input id="dest-in" class="dest-in" type="text"
-            placeholder="Ziel — z.B. Altona, Berlin, Lübeck …"
-            onkeydown="if(event.key==='Enter')calcRoute()">
-          <input id="dep-time" class="dest-time" type="time" title="Abfahrtszeit (leer = jetzt)">
-          <button id="loc-btn" class="dest-loc" onclick="getLocation()" title="Mein Standort als Startpunkt">◎</button>
-          <button class="dest-go" onclick="calcRoute()">Los</button>
-        </div>
-
-        <div id="mode-options" style="display:none;margin-bottom:14px"></div>
 
         <div id="route-tabs" class="route-tabs">
           <button class="chip on" onclick="setRouteMode('transit',this)">Bus / ÖPNV</button>
