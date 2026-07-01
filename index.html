@@ -21,12 +21,12 @@
 
 <div class="layout">
   <nav class="sidebar" id="sidebar">
-    <button id="nb-start" class="nav-btn on"  onclick="show('start',this)"><span class="nav-ico">◉</span><span class="nav-lbl">Start</span></button>
-    <button id="nb-dep"   class="nav-btn"     onclick="show('dep',this)"><span class="nav-ico">⊞</span><span class="nav-lbl">Bahn</span></button>
-    <button id="nb-route" class="nav-btn"     onclick="show('route',this)"><span class="nav-ico">⬡</span><span class="nav-lbl">Route</span></button>
-    <button id="nb-stoer" class="nav-btn"     onclick="show('stoer',this)"><span class="nav-ico">◬</span><span class="nav-lbl">Störung</span></button>
-    <button id="nb-bike"  class="nav-btn"     onclick="show('bike',this)"><span class="nav-ico">◈</span><span class="nav-lbl">Räder</span></button>
-    <button id="nb-car"   class="nav-btn"     onclick="show('car',this)"><span class="nav-ico">◻</span><span class="nav-lbl">Sharing</span></button>
+    <button id="nb-start"  class="nav-btn on" onclick="show('start',this)"><span class="nav-ico">◉</span><span class="nav-lbl">Start</span></button>
+    <button id="nb-dep"    class="nav-btn"    onclick="show('dep',this)"><span class="nav-ico">⊞</span><span class="nav-lbl">Bahn</span></button>
+    <button id="nb-route"  class="nav-btn"    onclick="show('route',this)"><span class="nav-ico">⬡</span><span class="nav-lbl">Route</span></button>
+    <button id="nb-bike"   class="nav-btn"    onclick="show('bike',this)"><span class="nav-ico">◈</span><span class="nav-lbl">Räder</span></button>
+    <button id="nb-car"    class="nav-btn"    onclick="show('car',this)"><span class="nav-ico">◻</span><span class="nav-lbl">Sharing</span></button>
+    <button id="nb-events" class="nav-btn"    onclick="show('events',this)"><span class="nav-ico">★</span><span class="nav-lbl">Events</span></button>
     <div class="nav-spacer"></div>
     <div class="nav-line"></div>
     <button class="nav-btn" onclick="openSettings()"><span class="nav-ico">⚙</span><span class="nav-lbl">Einst.</span></button>
@@ -40,7 +40,7 @@
 
         <div class="greeting-bar">
           <div id="greeting-main" class="greeting-main">Willkommen</div>
-          <div id="greeting-sub" class="greeting-sub">Hamburg · Wetter wird geladen…</div>
+          <div id="greeting-sub" class="greeting-sub">Hamburg</div>
         </div>
 
         <div id="rec-card" class="rec-card transit">
@@ -58,28 +58,14 @@
         <div class="dest-row">
           <div class="dest-prefix">Wohin?</div>
           <input id="dest-in" class="dest-in" type="text"
-            placeholder="Ziel — z.B. Berlin, München, Lübeck …"
+            placeholder="Ziel — z.B. Altona, Berlin, Lübeck …"
             onkeydown="if(event.key==='Enter')calcRoute()">
+          <input id="dep-time" class="dest-time" type="time" title="Abfahrtszeit (leer = jetzt)">
           <button id="loc-btn" class="dest-loc" onclick="getLocation()" title="Mein Standort als Startpunkt">◎</button>
           <button class="dest-go" onclick="calcRoute()">Los</button>
         </div>
 
-        <!-- Wettervergleich Hamburg ↔ Ziel -->
-        <div id="trip-cmp" class="trip-cmp" style="display:none">
-          <div class="trip-col">
-            <div class="trip-lbl">Hamburg jetzt</div>
-            <div id="tc-hh-wx" class="trip-wx-big">—</div>
-            <div id="tc-hh-sub" class="trip-wx-sub"></div>
-            <span id="tc-hh-badge" class="trip-badge transit"></span>
-          </div>
-          <div class="trip-col">
-            <div id="tc-dest-lbl" class="trip-lbl">Ziel</div>
-            <div id="tc-dest-wx" class="trip-wx-big">—</div>
-            <div id="tc-dest-sub" class="trip-wx-sub"></div>
-            <span id="tc-dest-badge" class="trip-badge transit"></span>
-            <div id="tc-hint" class="trip-hint"></div>
-          </div>
-        </div>
+        <div id="mode-options" style="display:none;margin-bottom:14px"></div>
 
         <div id="route-tabs" class="route-tabs">
           <button class="chip on" onclick="setRouteMode('transit',this)">Bus / ÖPNV</button>
@@ -90,23 +76,6 @@
         <div id="route-info" class="route-info">
           <div class="route-info-text"><span id="ri-label">—</span><span id="ri-sub" class="route-info-sub"></span></div>
           <a id="ri-link" class="rec-link primary" href="#" target="_blank">Öffnen →</a>
-        </div>
-
-        <!-- EVENTS IN HAMBURG -->
-        <div id="events-card" class="rec-card events" style="display:none">
-          <div class="rec-top">
-            <div class="rec-body">
-              <div class="rec-mode">Events in Hamburg</div>
-              <div id="events-title" class="rec-title">Heute in Hamburg</div>
-              <div id="events-detail" class="rec-detail"></div>
-              <div id="events-tags" class="rec-tags"></div>
-            </div>
-          </div>
-          <div class="rec-links">
-            <a class="rec-link primary" href="https://www.hamburg.de/freizeit-sport/veranstaltungen/" target="_blank">Hamburg Events →</a>
-            <a class="rec-link" href="https://www.eventim.de/city/hamburg/" target="_blank">Tickets →</a>
-            <a class="rec-link" href="https://www.abendblatt.de/hamburg/veranstaltungen/" target="_blank">Abendblatt →</a>
-          </div>
         </div>
 
         <div class="sec-lbl">5-Tage Vorhersage</div>
@@ -194,42 +163,6 @@
       </div>
     </div>
 
-    <!-- STÖRUNGEN -->
-    <div id="panel-stoer" class="panel">
-      <div class="pscroll">
-        <div id="stoer-status-card" class="rec-card traffic">
-          <div class="rec-top">
-            <div class="rec-body">
-              <div class="rec-mode">Aktuelle Lage</div>
-              <div id="stoer-title" class="rec-title">Wird geladen…</div>
-              <div id="stoer-detail" class="rec-detail"></div>
-              <div id="stoer-tags" class="rec-tags"></div>
-            </div>
-          </div>
-        </div>
-        <div id="stoer-dep-box" style="margin-bottom:14px"></div>
-        <div class="sec-lbl">Externe Quellen</div>
-        <div class="pbox">
-          <div class="prow">
-            <div class="prow-info"><div class="prow-name">HVV Betriebsmeldungen</div><div class="prow-sub">Echtzeitstörungen Busse &amp; Bahnen</div></div>
-            <a class="prow-link" href="https://www.hvv.de/de/service/betriebsmeldungen" target="_blank">Öffnen →</a>
-          </div>
-          <div class="prow">
-            <div class="prow-info"><div class="prow-name">NDR Staumelder</div><div class="prow-sub">Aktuelle Staus &amp; Sperrungen Hamburg</div></div>
-            <a class="prow-link" href="https://www.ndr.de/nachrichten/info/stau,stau112.html" target="_blank">Öffnen →</a>
-          </div>
-          <div class="prow">
-            <div class="prow-info"><div class="prow-name">DB Streckenstatus</div><div class="prow-sub">Störungen im Fernverkehr</div></div>
-            <a class="prow-link" href="https://www.bahn.de/service/zug/reiseauskunft" target="_blank">Öffnen →</a>
-          </div>
-          <div class="prow">
-            <div class="prow-info"><div class="prow-name">Verkehrsinfos Hamburg</div><div class="prow-sub">Baustellen, Sperrungen, Verkehrslagen</div></div>
-            <a class="prow-link" href="https://www.hamburg.de/verkehr/" target="_blank">Öffnen →</a>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- RÄDER -->
     <div id="panel-bike" class="panel">
       <div class="pscroll">
@@ -256,6 +189,27 @@
         <div class="pgroup">
           <div class="pgroup-title">E-Scooter &amp; E-Bikes</div>
           <div class="pbox" id="scooter-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EVENTS -->
+    <div id="panel-events" class="panel">
+      <div class="pscroll">
+        <div id="events-card" class="rec-card events">
+          <div class="rec-top">
+            <div class="rec-body">
+              <div class="rec-mode">Events in Hamburg</div>
+              <div id="events-title" class="rec-title">Heute in Hamburg</div>
+              <div id="events-detail" class="rec-detail"></div>
+              <div id="events-tags" class="rec-tags"></div>
+            </div>
+          </div>
+          <div class="rec-links">
+            <a class="rec-link primary" href="https://www.hamburg.de/freizeit-sport/veranstaltungen/" target="_blank">Hamburg Events →</a>
+            <a class="rec-link" href="https://www.eventim.de/city/hamburg/" target="_blank">Tickets →</a>
+            <a class="rec-link" href="https://www.abendblatt.de/hamburg/veranstaltungen/" target="_blank">Abendblatt →</a>
+          </div>
         </div>
       </div>
     </div>
@@ -318,14 +272,6 @@
         <div class="sp-row">
           <div class="sp-lbl">Leichter Regen ok <span class="sp-sub">Nieselregen trotzdem Rad</span></div>
           <label class="tog"><input type="checkbox" id="p-rain"><div class="tog-s"></div></label>
-        </div>
-      </div>
-
-      <div class="sp-sec">
-        <h3>Informationen</h3>
-        <div class="sp-row">
-          <div class="sp-lbl">Events in der Nähe <span class="sp-sub">Veranstaltungshinweise auf Startseite</span></div>
-          <label class="tog"><input type="checkbox" id="p-events"><div class="tog-s"></div></label>
         </div>
       </div>
 

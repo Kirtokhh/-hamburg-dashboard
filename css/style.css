@@ -243,6 +243,13 @@ header{background:var(--surface);border-bottom:1px solid var(--border);height:50
 .loading{padding:30px;text-align:center;color:var(--dim);font-size:13px}
 .err{padding:10px 14px;border-radius:var(--r);background:#fff5f5;border:1px solid #fca5a5;font-size:13px;color:var(--red)}
 
+/* TIME INPUT */
+.dest-time{flex:0 0 auto;width:100px;border:none;border-left:1px solid var(--border);background:none;padding:0 10px;font-size:13px;color:var(--text);font-family:inherit;outline:none;cursor:pointer}
+.dest-time::-webkit-calendar-picker-indicator{opacity:.45;cursor:pointer}
+
+/* MODE OPTIONS */
+.srow.opt-rec{font-weight:600}
+
 /* MOBILE */
 @media(max-width:640px){
   .layout{flex-direction:column}

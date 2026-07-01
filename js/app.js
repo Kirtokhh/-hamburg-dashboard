@@ -1,5 +1,5 @@
 // ── PREFS ─────────────────────────────────────────────────
-const DP={wantBike:true,hasCar:true,hasScooter:true,tMin:8,tMax:34,wMax:25,rainOk:false,showEvents:true};
+const DP={wantBike:true,hasCar:true,hasScooter:true,tMin:8,tMax:34,wMax:25,rainOk:false};
 const lP=()=>{
   try{
     const stored=JSON.parse(localStorage.getItem('mp')||'{}');
@@ -26,7 +26,6 @@ function openSettings(){
   document.getElementById('p-tmax').value=p.tMax;
   document.getElementById('p-wmax').value=p.wMax;
   document.getElementById('p-rain').checked=p.rainOk;
-  document.getElementById('p-events').checked=p.showEvents;
   document.getElementById('bike-thresh').style.display=p.wantBike?'':'none';
   document.getElementById('p-bike').onchange=e=>document.getElementById('bike-thresh').style.display=e.target.checked?'':'none';
   document.getElementById('settings-ov').classList.add('open');
@@ -41,7 +40,6 @@ function saveSettings(){
     tMax:+document.getElementById('p-tmax').value,
     wMax:+document.getElementById('p-wmax').value,
     rainOk:document.getElementById('p-rain').checked,
-    showEvents:document.getElementById('p-events').checked,
   });
   document.getElementById('sp-ok').textContent='✓ Gespeichert';
   setTimeout(()=>{document.getElementById('sp-ok').textContent='';closeSettings();renderRec();renderInfoCards();},700);
@@ -59,7 +57,7 @@ function show(id,btn){
   if(id==='bike')setTimeout(()=>leafMap&&leafMap.invalidateSize(),150);
   if(id==='start')setTimeout(()=>startMap&&startMap.invalidateSize(),150);
   if(id==='dep'&&!document.getElementById('dep-board').querySelector('.dep-box')){loadDep();loadBusDep();}
-  if(id==='stoer')renderStoer();
+  if(id==='events')renderInfoCards();
 }
 
 // ── WEATHER ───────────────────────────────────────────────
@@ -83,7 +81,6 @@ async function loadWeather(){
     renderRec();
     renderGreeting();
     renderInfoCards();
-    renderStoer();
   }catch(e){
     console.error('weather',e);
     document.getElementById('wx-pill').textContent='Wetter nicht verfügbar';
@@ -131,8 +128,7 @@ function renderGreeting(){
   const now=new Date();
   const ds=`${days[now.getDay()]}, ${now.getDate()}. ${months[now.getMonth()]}`;
   document.getElementById('greeting-main').textContent=greet;
-  const sub=wxState?`${ds} · ${wxIcon(wxState.id)} ${wxState.t}°C · ${wxState.desc}`:`${ds} · Hamburg`;
-  document.getElementById('greeting-sub').textContent=sub;
+  document.getElementById('greeting-sub').textContent=`${ds} · Hamburg`;
 }
 
 // ── START MAP ─────────────────────────────────────────────
@@ -177,6 +173,15 @@ function setRouteMode(mode,btn){
   routeMode=mode;
   document.querySelectorAll('#route-tabs .chip').forEach(c=>c.classList.remove('on'));
   if(btn)btn.classList.add('on');
+  if(destState)fetchAndDrawRoute();
+}
+
+function setRouteModeFromOpt(mode){
+  routeMode=mode;
+  document.querySelectorAll('#route-tabs .chip').forEach(c=>c.classList.remove('on'));
+  const modeIdx={transit:0,bike:1,car:2};
+  const chips=document.querySelectorAll('#route-tabs .chip');
+  if(modeIdx[mode]!==undefined)chips[modeIdx[mode]]?.classList.add('on');
   if(destState)fetchAndDrawRoute();
 }
 
@@ -227,7 +232,6 @@ async function fetchAndDrawRoute(){
 }
 
 async function fetchTransitRoute(lat1,lon1,lat2,lon2){
-  const ri=document.getElementById('route-info');
   const productColor={suburban:'#1a7f37',regional:'#7f1d1d',regionalExp:'#7f1d1d',
     nationalExpress:'#1c1c1c',national:'#1c1c1c',bus:'#9a3412',subway:'#1e3a8a',ferry:'#134e4a'};
   try{
@@ -267,7 +271,6 @@ async function fetchTransitRoute(lat1,lon1,lat2,lon2){
     document.getElementById('ri-label').textContent='Bus / ÖPNV · ca. '+durTxt+changesTxt;
     document.getElementById('ri-sub').textContent=`${fromArr[0].name} → ${toArr[0].name}`;
   }catch(e){
-    // Fallback: OSRM driving as approximate transit path
     try{
       const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`,{signal:AbortSignal.timeout(8000)});
       const d=await r.json();
@@ -306,75 +309,6 @@ function updateStartMap(){
   fetchAndDrawRoute();
 }
 
-// ── STÖRUNGEN ─────────────────────────────────────────────
-let lastDeps=[];
-
-function renderStoer(){
-  if(wxState){
-    const{t,w,id}=wxState;
-    const rain=id>=300&&id<700,heavy=id>=500&&id<600,thunder=id<300;
-    const h=new Date().getHours();
-    const morningRush=h>=7&&h<=9,eveningRush=h>=16&&h<=19,rush=morningRush||eveningRush;
-    const tags=[];
-    let title,detail;
-    if(thunder){
-      title='Gewitter — starke Verzögerungen möglich';
-      detail='Gewitterbedingte Störungen im ÖPNV und erhöhtes Unfallrisiko im Straßenverkehr.';
-      tags.push({t:'Gewitter',c:'bad'},{t:'Störungen wahrscheinlich',c:'bad'});
-    }else if(heavy&&rush){
-      title='Starkregen + Rushhour — Staus wahrscheinlich';
-      detail='Kombination aus Starkregen und erhöhtem Verkehrsaufkommen. Mehr Zeit einplanen.';
-      tags.push({t:'Starkregen',c:'bad'},{t:morningRush?'Morgenrush':'Abendrush',c:'warn'});
-    }else if(heavy){
-      title='Starkregen — Verzögerungen möglich';
-      detail='Bei Starkregen kommt es häufig zu Staus und ÖPNV-Verspätungen.';
-      tags.push({t:'Starkregen',c:'bad'});
-    }else if(rain&&rush){
-      title='Regen + Rushhour — mehr Zeit einplanen';
-      detail='Leichter Regen und Stoßzeiten erhöhen das Verkehrsaufkommen.';
-      tags.push({t:'Regen',c:'warn'},{t:morningRush?'Morgenrush':'Abendrush',c:'warn'});
-    }else if(rush){
-      title=morningRush?'Morgenrush — erhöhtes Verkehrsaufkommen':'Abendrush — erhöhtes Verkehrsaufkommen';
-      detail='Stoßzeiten: S-Bahn und Busse stärker ausgelastet.';
-      tags.push({t:morningRush?'Morgenrush':'Abendrush',c:'warn'},{t:'Normalbetrieb',c:'ok'});
-    }else if(w>40){
-      title='Starker Wind — Fährbetrieb möglicherweise eingeschränkt';
-      detail=`Windgeschwindigkeit ${w} km/h. Fährlinien können betroffen sein.`;
-      tags.push({t:`Wind ${w} km/h`,c:'warn'});
-    }else{
-      title='Keine bekannten Störungen';
-      detail='Aktuelle Störungsmeldungen direkt bei HVV und NDR prüfen.';
-      tags.push({t:'Normalbetrieb',c:'ok'});
-    }
-    document.getElementById('stoer-status-card').className='rec-card traffic';
-    document.getElementById('stoer-title').textContent=title;
-    document.getElementById('stoer-detail').textContent=detail;
-    document.getElementById('stoer-tags').innerHTML=tags.map(x=>`<span class="rtag ${x.c}">${x.t}</span>`).join('');
-  }
-
-  const sb=document.getElementById('stoer-dep-box');
-  if(!lastDeps.length){
-    sb.innerHTML=`<div class="dep-box"><div class="dep-hd"><span class="dep-sn">Zugstatus</span><span class="dep-ts">Bahn-Tab öffnen zum Laden</span></div></div>`;
-    return;
-  }
-  const delayed=lastDeps.filter(d=>(d.delayDeparture||0)>2&&!d.isCancelled).length;
-  const cancl=lastDeps.filter(d=>d.isCancelled===1).length;
-  const summ=cancl?`${cancl} Ausfall${cancl>1?'e':''}`:delayed?`${delayed} verspätet`:'Alles pünktlich';
-  const rows=lastDeps.slice(0,10).map(d=>{
-    const delay=d.delayDeparture??0,cancelled=d.isCancelled===1;
-    const name=(d.train||'').trim();
-    const dest=(d.destination||'?').replace(/^Hamburg[- ]/i,'');
-    const[hh,mm]=(d.scheduledDeparture||'00:00').split(':').map(Number);
-    let tHtml;
-    if(cancelled)tHtml='<span style="color:var(--red);font-style:italic">Fällt aus</span>';
-    else if(delay>5)tHtml=`<span class="t-now">+${delay}'</span>`;
-    else if(delay>2)tHtml=`<span class="t-soon">+${delay}'</span>`;
-    else tHtml=`<span class="t-ok">Pünktlich</span>`;
-    return`<tr><td><span class="lbadge ${badgeCls(d.trainClasses||[])}">${name}</span></td><td class="dep-dir">${dest}</td><td class="dep-plt">${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}</td><td class="dep-t">${tHtml}</td></tr>`;
-  }).join('');
-  sb.innerHTML=`<div class="dep-box"><div class="dep-hd"><span class="dep-sn">${curLabel}</span><span class="dep-ts">${summ}</span></div><table class="dep-tbl"><tbody>${rows}</tbody></table></div>`;
-}
-
 // ── RECOMMENDATION ────────────────────────────────────────
 const MODES={
   storm:  {cls:'storm',  label:'Gewitter',   title:'Bitte ÖPNV nehmen — Gewittergefahr!'},
@@ -396,42 +330,7 @@ function getMode(t,w,id,p,dist){
   return'transit';
 }
 
-let destState=null,destWeather=null;
-
-async function loadDestWeather(lat,lon){
-  try{
-    const r=await fetch(`/api/weather?lat=${lat}&lon=${lon}&appid=${OWM}&units=metric&lang=de`,{signal:AbortSignal.timeout(8000)});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const wx=await r.json();
-    destWeather={t:Math.round(wx.main.temp),w:Math.round(wx.wind.speed*3.6),id:wx.weather[0].id,desc:wx.weather[0].description,city:wx.name};
-    renderTripCompare();
-  }catch(e){
-    destWeather=null;
-    document.getElementById('trip-cmp').style.display='none';
-  }
-}
-
-function renderTripCompare(){
-  const el=document.getElementById('trip-cmp');
-  if(!wxState||!destWeather||!destState){el.style.display='none';return;}
-  const p=lP();
-  const hhMode=getMode(wxState.t,wxState.w,wxState.id,p,null);
-  const dMode=getMode(destWeather.t,destWeather.w,destWeather.id,p,null);
-  document.getElementById('tc-hh-wx').textContent=`${wxIcon(wxState.id)} ${wxState.t}°C`;
-  document.getElementById('tc-hh-sub').textContent=`${wxState.desc} · ${wxState.w} km/h`;
-  const hb=document.getElementById('tc-hh-badge');hb.className=`trip-badge ${MODES[hhMode].cls}`;hb.textContent=MODES[hhMode].label;
-  document.getElementById('tc-dest-lbl').textContent=destWeather.city||destState.name;
-  document.getElementById('tc-dest-wx').textContent=`${wxIcon(destWeather.id)} ${destWeather.t}°C`;
-  document.getElementById('tc-dest-sub').textContent=`${destWeather.desc} · ${destWeather.w} km/h`;
-  const db=document.getElementById('tc-dest-badge');db.className=`trip-badge ${MODES[dMode].cls}`;db.textContent=MODES[dMode].label;
-  const diff=Math.abs(wxState.t-destWeather.t);
-  const hints=[];
-  if(diff>=5)hints.push(`${diff}°C ${destWeather.t>wxState.t?'wärmer':'kälter'} als Hamburg`);
-  if(destWeather.id>=300&&destWeather.id<700&&!(wxState.id>=300&&wxState.id<700))hints.push('Regen am Ziel — Schirm nicht vergessen');
-  if(destWeather.id>=800&&wxState.id>=300&&wxState.id<700)hints.push('Schöner als Hamburg am Ziel');
-  document.getElementById('tc-hint').textContent=hints.join(' · ');
-  el.style.display='';
-}
+let destState=null;
 
 function renderRec(){
   if(!wxState)return;
@@ -452,9 +351,7 @@ function renderRec(){
   document.getElementById('rec-title').textContent=title;
   const parts=[];
   if(destState)parts.push(`→ ${destState.name}`);
-  parts.push(`${t}°C`);
-  if(id>=300&&id<700)parts.push(id>=500&&id<600?'Starker Regen':'Regen');
-  parts.push(`Wind ${w} km/h`);
+  parts.push(`${t}°C · ${wxState.desc} · Wind ${w} km/h`);
   document.getElementById('rec-detail').textContent=parts.join(' · ');
   const distEl=document.getElementById('rec-dist');
   if(destState){distEl.style.display='';distEl.textContent=fmtDist(destState.dist)+' Luftlinie';}
@@ -476,9 +373,8 @@ function renderRec(){
 
 // ── EVENTS CARD ───────────────────────────────────────────
 function renderInfoCards(){
-  const p=lP();
   const ec=document.getElementById('events-card');
-  if(p.showEvents&&wxState){
+  if(wxState){
     const{t,w,id}=wxState;
     const rain=id>=300&&id<700,heavy=id>=500&&id<600,thunder=id<300;
     const goodWeather=!rain&&!thunder&&t>=14&&w<=25;
@@ -521,10 +417,11 @@ function renderForecast(p){
   const mIco={storm:'⛈',transit:'🚊',bike:'🚲',scooter:'🛴',car:'🚗',walk:'🚶'};
   document.getElementById('fc-grid').innerHTML=fcData.slice(0,5).map(fc=>{
     const d=new Date(fc.date+'T12:00:00'),wd=WD[d.getDay()],isToday=fc.date===today;
-    const mode=getMode(Math.round((fc.tMin+fc.tMax)/2),fc.wAvg,fc.weatherId,p,null);
+    const weatherId=isToday&&wxState?wxState.id:fc.weatherId;
+    const mode=getMode(Math.round((fc.tMin+fc.tMax)/2),fc.wAvg,weatherId,p,null);
     return`<div class="fc-day${isToday?' today':''}">
       <div class="fc-wd">${isToday?'Heute':wd}</div>
-      <div class="fc-wx">${wxIcon(fc.weatherId)}</div>
+      <div class="fc-wx">${wxIcon(weatherId)}</div>
       <div class="fc-temp">${fc.tMax}°<small>/${fc.tMin}°</small></div>
       <div class="fc-wind">${fc.wAvg}km/h</div>
       <div class="fc-tip" title="${MODES[mode].title}">${mIco[mode]}</div>
@@ -532,7 +429,7 @@ function renderForecast(p){
   }).join('');
 }
 
-// ── DESTINATION ───────────────────────────────────────────
+// ── DESTINATION & MODE OPTIONS ────────────────────────────
 const geoCache={};
 function haversine(la1,lo1,la2,lo2){
   const R=6371,d=v=>v*Math.PI/180;
@@ -540,11 +437,142 @@ function haversine(la1,lo1,la2,lo2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 function fmtDist(km){return km<1?Math.round(km*1e3)+' m':km.toFixed(1)+' km'}
+
+async function fetchOsrmDuration(profile,lat1,lon1,lat2,lon2){
+  const r=await fetch(
+    `https://router.project-osrm.org/route/v1/${profile}/${lon1},${lat1};${lon2},${lat2}?overview=false`,
+    {signal:AbortSignal.timeout(9000)}
+  );
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const d=await r.json();
+  if(d.code!=='Ok'||!d.routes?.length)throw new Error('Keine Route');
+  return{distM:d.routes[0].distance,durS:d.routes[0].duration};
+}
+
+async function fetchTransitDuration(lat1,lon1,lat2,lon2,depTimeISO){
+  const[fromR,toR]=await Promise.all([
+    fetch(`https://v5.db.transport.rest/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
+    fetch(`https://v5.db.transport.rest/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
+  ]);
+  const[fromArr,toArr]=await Promise.all([fromR.json(),toR.json()]);
+  if(!fromArr?.length||!toArr?.length)throw new Error('Keine Haltestellen');
+  const params=new URLSearchParams({from:fromArr[0].id,to:toArr[0].id,results:1,stopovers:false});
+  if(depTimeISO)params.set('departure',depTimeISO);
+  const jR=await fetch(`https://v5.db.transport.rest/journeys?${params}`,{signal:AbortSignal.timeout(12000)});
+  if(!jR.ok)throw new Error('HTTP '+jR.status);
+  const jD=await jR.json();
+  if(!jD.journeys?.length)throw new Error('Keine Verbindung');
+  const j=jD.journeys[0];
+  const dep=new Date(j.legs[0].departure);
+  const arr=new Date(j.legs[j.legs.length-1].arrival);
+  const durMin=Math.round((arr-dep)/60000);
+  const changes=Math.max(0,j.legs.filter(l=>!l.walking).length-1);
+  const depStr=dep.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+  return{durMin,changes,depStr};
+}
+
+function renderModeOptions(data,dist,p){
+  const el=document.getElementById('mode-options');
+  if(!wxState||!destState){el.style.display='none';return;}
+
+  const recommended=getMode(wxState.t,wxState.w,wxState.id,p,dist);
+  const fmtMin=m=>m<60?`${m} min`:`${Math.floor(m/60)}h ${m%60}min`;
+  const fmtKm=m=>m<1000?`${Math.round(m)} m`:`${(m/1000).toFixed(1)} km`;
+  const opts=[];
+
+  if(data.walkMin&&dist<5){
+    opts.push({mode:'walk',label:'Zu Fuß',dur:fmtMin(data.walkMin),sub:fmtDist(dist)+' · Schätzung',est:true});
+  }
+  if(p.wantBike&&dist<=25){
+    if(data.bike){
+      opts.push({mode:'bike',label:'Fahrrad',dur:fmtMin(Math.round(data.bike.durS/60)),sub:fmtKm(data.bike.distM),est:false});
+    }else{
+      opts.push({mode:'bike',label:'Fahrrad',dur:'—',sub:'nicht verfügbar',est:false});
+    }
+  }
+  if(data.scooterMin&&p.hasScooter&&dist<=12){
+    opts.push({mode:'scooter',label:'E-Scooter',dur:fmtMin(data.scooterMin),sub:fmtDist(dist)+' · Schätzung',est:true});
+  }
+  if(data.transit){
+    const{durMin,changes,depStr}=data.transit;
+    const changeTxt=changes>0?` · ${changes} Umstieg${changes>1?'e':''}`:' · Direkt';
+    opts.push({mode:'transit',label:'S-Bahn / ÖPNV',dur:fmtMin(durMin),sub:(depStr?`ab ${depStr}`:'Jetzt')+changeTxt,est:false});
+  }else{
+    opts.push({mode:'transit',label:'S-Bahn / ÖPNV',dur:'—',sub:'nicht verfügbar',est:false});
+  }
+  if(data.car&&p.hasCar){
+    opts.push({mode:'car',label:'Carsharing',dur:fmtMin(Math.round(data.car.durS/60)),sub:fmtKm(data.car.distM),est:false});
+  }
+
+  opts.sort((a,b)=>(b.mode===recommended?1:0)-(a.mode===recommended?1:0));
+
+  const modeCol={walk:'var(--muted)',bike:'var(--green)',scooter:'#7c3aed',transit:'var(--blue)',car:'var(--amber)',storm:'var(--red)'};
+
+  el.innerHTML=`<div class="sbox">
+    <div class="sbox-hd">Heute empfohlen → ${destState.name}</div>
+    ${opts.map(o=>{
+      const isRec=o.mode===recommended;
+      const col=modeCol[o.mode]||'var(--muted)';
+      const mapMode=o.mode==='walk'?'transit':o.mode==='scooter'?'bike':o.mode;
+      return`<div class="srow${isRec?' opt-rec':''}"
+        style="${isRec?`border-left:3px solid ${col};background:var(--bg);padding-left:9px`:'padding-left:12px'}"
+        onclick="setRouteModeFromOpt('${mapMode}')">
+        <span class="sdot" style="background:${col};flex-shrink:0"></span>
+        <span class="srow-name" style="min-width:120px">${o.label}</span>
+        <span style="font-size:13px;font-weight:${isRec?700:400};white-space:nowrap">${o.dur}</span>
+        <span style="font-size:11px;color:var(--dim);margin-left:8px;white-space:nowrap">${o.sub}</span>
+        ${isRec?`<span class="rtag ok" style="margin-left:auto;flex-shrink:0">Empfohlen</span>`:''}
+        ${o.est&&!isRec?`<span style="font-size:10px;color:var(--dim);margin-left:auto">Schätzung</span>`:''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function calcAllOptions(){
+  if(!destState){document.getElementById('mode-options').style.display='none';return;}
+  const[lat1,lon1]=userPos?[userPos.lat,userPos.lon]:HH;
+  const{lat:lat2,lon:lon2,dist}=destState;
+  const p=lP();
+
+  const timeVal=document.getElementById('dep-time').value;
+  let depTimeISO=null;
+  if(timeVal){
+    const[hh,mm]=timeVal.split(':').map(Number);
+    const dt=new Date();dt.setHours(hh,mm,0,0);
+    if(dt<new Date())dt.setDate(dt.getDate()+1);
+    depTimeISO=dt.toISOString();
+  }
+
+  const el=document.getElementById('mode-options');
+  el.style.display='';
+  el.innerHTML='<div class="loading" style="padding:14px;text-align:center">Verbindungen werden berechnet…</div>';
+
+  const[bikeRes,carRes,transitRes]=await Promise.allSettled([
+    (p.wantBike&&dist<=25)?fetchOsrmDuration('cycling',lat1,lon1,lat2,lon2):Promise.reject('skip'),
+    p.hasCar?fetchOsrmDuration('driving',lat1,lon1,lat2,lon2):Promise.reject('skip'),
+    fetchTransitDuration(lat1,lon1,lat2,lon2,depTimeISO),
+  ]);
+
+  const walkMin=dist<5?Math.round(dist/5*60):null;
+  let scooterMin=null;
+  if(p.hasScooter&&dist<=12&&bikeRes.status==='fulfilled'){
+    scooterMin=Math.round(bikeRes.value.durS/60*0.68);
+  }
+
+  renderModeOptions({
+    bike:bikeRes.status==='fulfilled'?bikeRes.value:null,
+    car:carRes.status==='fulfilled'?carRes.value:null,
+    transit:transitRes.status==='fulfilled'?transitRes.value:null,
+    walkMin,
+    scooterMin,
+  },dist,p);
+}
+
 async function calcRoute(){
   const q=document.getElementById('dest-in').value.trim();
   if(!q){
-    destState=null;destWeather=null;
-    document.getElementById('trip-cmp').style.display='none';
+    destState=null;
+    document.getElementById('mode-options').style.display='none';
     renderRec();
     updateStartMap();
     return;
@@ -561,7 +589,7 @@ async function calcRoute(){
     document.getElementById('gmaps-link').href=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}&travelmode=transit`;
     renderRec();
     updateStartMap();
-    loadDestWeather(+geo.lat,+geo.lon);
+    calcAllOptions();
   }catch(e){
     document.getElementById('rec-title').textContent='⚠ '+e.message;
   }
@@ -610,10 +638,9 @@ async function loadDep(){
     if(!r.ok)throw new Error('HTTP '+r.status);
     const{departures:deps=[]}=await r.json();
     if(!deps.length)throw new Error('Keine Abfahrten in den nächsten Minuten');
-    lastDeps=deps.slice(0,14);
-    renderStoer();
+    const localDeps=deps.slice(0,14);
     const now=new Date();
-    const rows=lastDeps.map(d=>{
+    const rows=localDeps.map(d=>{
       const cls=d.trainClasses||[];
       const name=(d.train||'').trim();
       const dest=(d.destination||'?').replace(/^Hamburg[- ]/i,'');
