@@ -325,14 +325,36 @@ function updateStartMap(){
     return;
   }
   startDestMarker=L.circleMarker([destState.lat,destState.lon],{radius:7,fillColor:'#cf222e',color:'#fff',weight:2,fillOpacity:1})
-    .addTo(startMap).bindPopup(`<b>${destState.name}</b><br>${fmtDist(destState.dist)} Luftlinie`);
+    .addTo(startMap).bindPopup(`<b>${destState.name}</b>`);
   tabs.style.display='flex';
   fetchAndDrawRoute();
 }
 
+function nearestN(data,lat,lon,n=10){
+  return[...data].map(s=>({...s,_d:haversine(lat,lon,s.lat,s.lon)}))
+    .sort((a,b)=>a._d-b._d).slice(0,n);
+}
+
+function updateMapLegend(){
+  const el=document.getElementById('map-legend');
+  if(!el)return;
+  const srOn=document.getElementById('msl-sr')?.classList.contains('on');
+  const dottOn=document.getElementById('msl-dott')?.classList.contains('on');
+  if(!srOn&&!dottOn){el.style.display='none';return;}
+  el.style.display='';
+  let h='';
+  if(srOn){
+    h+=`<div><span class="leg-dot" style="background:#1a7f37"></span>Räder verfügbar</div>`;
+    h+=`<div><span class="leg-dot" style="background:#9a6700"></span>Wenige Räder</div>`;
+    h+=`<div><span class="leg-dot" style="background:#cf222e"></span>Leer</div>`;
+  }
+  if(dottOn)h+=`<div><span class="leg-dot" style="background:#7c3aed"></span>Dott Scooter</div>`;
+  el.innerHTML=h;
+}
+
 async function toggleStartSharing(type,btn){
   const isOn=btn.classList.toggle('on');
-  if(!startMap)return;
+  if(!startMap){updateMapLegend();return;}
   if(isOn&&!startSharingLoaded){
     btn.textContent='…';
     await Promise.allSettled([loadStadtRAD(),loadDott()]);
@@ -348,12 +370,15 @@ async function toggleStartSharing(type,btn){
     if(isOn&&dottStartFG)dottStartFG.addTo(startMap);
     else if(dottStartFG)startMap.removeLayer(dottStartFG);
   }
+  updateMapLegend();
 }
 
 function buildStartMapSharing(){
   if(!startMap)return;
+  const[clat,clon]=userPos?[userPos.lat,userPos.lon]:HH;
+
   srStartFG=L.featureGroup();
-  srData.forEach(s=>{
+  nearestN(srData,clat,clon,10).forEach(s=>{
     const col=s.avail>5?'#1a7f37':s.avail>0?'#9a6700':'#cf222e';
     const r=Math.max(4,Math.min(9,3+s.avail/4));
     L.circleMarker([s.lat,s.lon],{radius:r,fillColor:col,color:'#fff',weight:1,fillOpacity:.85})
@@ -363,7 +388,7 @@ function buildStartMapSharing(){
   if(document.getElementById('msl-sr')?.classList.contains('on'))srStartFG.addTo(startMap);
 
   dottStartFG=L.featureGroup();
-  dottData.forEach(s=>{
+  nearestN(dottData,clat,clon,10).forEach(s=>{
     const col=s.avail>0?'#7c3aed':'#9198a1';
     L.circleMarker([s.lat,s.lon],{radius:5,fillColor:col,color:'#fff',weight:1,fillOpacity:.8})
       .bindPopup(`<b>${s.name||'Dott-Zone'}</b><br>🛴 ${s.scooters} Scooter · 🚲 ${s.bikes} Bikes`)
@@ -476,9 +501,7 @@ function renderRec(){
   document.getElementById('rec-mode').textContent='Heute empfohlen';
   document.getElementById('rec-title').textContent=`${m.label} → ${destState.name}`;
   document.getElementById('rec-detail').textContent=`${reason} · ${t}°C · Wind ${w} km/h`;
-  const distEl=document.getElementById('rec-dist');
-  distEl.style.display='';
-  distEl.textContent=fmtDist(dist)+' Luftlinie';
+  document.getElementById('rec-dist').style.display='none';
   const tags=[];
   if(id<300)tags.push({t:'Gewitter',c:'bad'});
   else if(id>=300&&id<600)tags.push({t:'Regen',c:'warn'});
@@ -737,24 +760,31 @@ function renderModeOptions(data,dist,p){
   const timeVal=document.getElementById('dep-time').value;
   const timeLbl=timeVal?` · ${timeDir} ${timeVal}`:'';
 
-  el.innerHTML=`<div class="sbox">
-    <div class="sbox-hd" style="display:flex;flex-direction:column;gap:2px">
-      <span>Reisezeiten → ${destState.name}${timeLbl}</span>
-      <span style="font-size:11px;color:var(--muted);font-weight:400">${reason}</span>
+  const modeIcons={walk:'🚶',bike:'🚲',scooter:'🛴',transit:'🚇',car:'🚗'};
+  el.innerHTML=`<div class="mo-card">
+    <div class="mo-hd">
+      <span class="mo-hd-dest">Reisezeiten → ${destState.name}${timeLbl}</span>
+      <span class="mo-hd-reason">${reason}</span>
     </div>
     ${opts.map(o=>{
       const isRec=o.mode===recommended;
       const col=modeCol[o.mode]||'var(--muted)';
       const mapMode=o.mode==='walk'?'transit':o.mode==='scooter'?'bike':o.mode;
-      return`<div class="srow${isRec?' opt-rec':''}"
-        style="${isRec?`border-left:3px solid ${col};background:var(--bg);padding-left:9px`:'padding-left:12px'}"
-        onclick="setRouteModeFromOpt('${mapMode}')">
-        <span class="sdot" style="background:${col};flex-shrink:0"></span>
-        <span class="srow-name" style="min-width:110px">${o.label}</span>
-        <span style="font-size:13px;font-weight:${isRec?700:400};white-space:nowrap">${o.dur}</span>
-        <span style="font-size:11px;color:var(--dim);margin-left:8px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.sub}</span>
-        ${isRec?`<span class="rtag ok" style="flex-shrink:0">Empfohlen</span>`:''}
-        ${o.est&&!isRec?`<span style="font-size:11px;color:var(--dim);flex-shrink:0">~</span>`:''}
+      const icon=modeIcons[o.mode]||'•';
+      const na=o.dur==='—';
+      return`<div class="mo-row${isRec?' is-rec':''}"
+        style="${isRec?`border-left:3px solid ${col};padding-left:13px`:''}"
+        onclick="setRouteModeFromOpt('${mapMode}')"
+        tabindex="0"
+        onkeydown="if(event.key==='Enter'||event.key===' ')setRouteModeFromOpt('${mapMode}')">
+        <span class="mo-icon">${icon}</span>
+        <span class="mo-body">
+          <span class="mo-name">${o.label}</span>
+          ${o.sub?`<span class="mo-sub">${o.sub}</span>`:''}
+        </span>
+        <span class="mo-time${na?' na':''}">${o.dur}</span>
+        ${isRec?`<span class="mo-badge">Empfohlen</span>`:''}
+        ${o.est&&!isRec?`<span class="mo-est">~</span>`:''}
       </div>`;
     }).join('')}
   </div>`;
@@ -1051,7 +1081,8 @@ async function loadStadtRAD(){
     }
     if(startSharingLoaded&&srStartFG){
       srStartFG.clearLayers();
-      srData.forEach(s=>{
+      const[clat,clon]=userPos?[userPos.lat,userPos.lon]:HH;
+      nearestN(srData,clat,clon,10).forEach(s=>{
         const col=s.avail>5?'#1a7f37':s.avail>0?'#9a6700':'#cf222e';
         L.circleMarker([s.lat,s.lon],{radius:Math.max(4,Math.min(9,3+s.avail/4)),fillColor:col,color:'#fff',weight:1,fillOpacity:.85})
           .bindPopup(`<b>${s.name}</b><br>🚲 ${s.avail} Räder · ${s.docks} Docks frei`)
@@ -1088,7 +1119,8 @@ async function loadDott(){
     }
     if(startSharingLoaded&&dottStartFG){
       dottStartFG.clearLayers();
-      dottData.forEach(s=>{
+      const[clat,clon]=userPos?[userPos.lat,userPos.lon]:HH;
+      nearestN(dottData,clat,clon,10).forEach(s=>{
         const col=s.avail>0?'#7c3aed':'#9198a1';
         L.circleMarker([s.lat,s.lon],{radius:5,fillColor:col,color:'#fff',weight:1,fillOpacity:.8})
           .bindPopup(`<b>${s.name||'Dott-Zone'}</b><br>🛴 ${s.scooters} Scooter · 🚲 ${s.bikes} Bikes`)
