@@ -215,9 +215,10 @@ async function fetchAndDrawRoute(){
   if(routeMode==='transit'){await fetchTransitRoute(lat1,lon1,lat2,lon2);return;}
 
   const osrmProfile=routeMode==='bike'?'cycling':'driving';
+  const osrmHost=routeMode==='bike'?'routed-bike':'routed-car';
   try{
     const r=await fetch(
-      `https://router.project-osrm.org/route/v1/${osrmProfile}/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`,
+      `https://routing.openstreetmap.de/${osrmHost}/route/v1/${osrmProfile}/${lon1},${lat1};${lon2},${lat2}?overview=full&geometries=geojson`,
       {signal:AbortSignal.timeout(9000)}
     );
     if(!r.ok)throw new Error('HTTP '+r.status);
@@ -661,8 +662,10 @@ function findNearestSharing(data,lat,lon){
 }
 
 async function fetchOsrmDuration(profile,lat1,lon1,lat2,lon2){
+  const hostMap={cycling:'routed-bike',driving:'routed-car',foot:'routed-foot'};
+  const host=hostMap[profile]||'routed-car';
   const r=await fetch(
-    `https://router.project-osrm.org/route/v1/${profile}/${lon1},${lat1};${lon2},${lat2}?overview=false`,
+    `https://routing.openstreetmap.de/${host}/route/v1/${profile}/${lon1},${lat1};${lon2},${lat2}?overview=false`,
     {signal:AbortSignal.timeout(9000)}
   );
   if(!r.ok)throw new Error('HTTP '+r.status);
