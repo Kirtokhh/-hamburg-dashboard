@@ -1,3 +1,6 @@
+// ── CONFIG ────────────────────────────────────────────────
+const HAFAS='https://v6.db.transport.rest'; // direkt vom Browser, CORS:*
+
 // ── PREFS ─────────────────────────────────────────────────
 const DP={wantBike:true,hasCar:true,hasScooter:true,tMin:8,tMax:34,wMax:25,rainOk:false};
 const lP=()=>{
@@ -253,13 +256,13 @@ async function fetchTransitRoute(lat1,lon1,lat2,lon2){
     nationalExpress:'#1c1c1c',national:'#1c1c1c',bus:'#9a3412',subway:'#1e3a8a',ferry:'#134e4a'};
   try{
     const[fromR,toR]=await Promise.all([
-      fetch(`/api/hafas/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
-      fetch(`/api/hafas/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
+      fetch(`${HAFAS}/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
+      fetch(`${HAFAS}/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
     ]);
     const[fromArr,toArr]=await Promise.all([fromR.json(),toR.json()]);
     if(!fromArr?.length||!toArr?.length)throw new Error('Keine Haltestellen gefunden');
     const jR=await fetch(
-      `/api/hafas/journeys?from=${fromArr[0].id}&to=${toArr[0].id}&results=1&stopovers=true&polylines=true`,
+      `${HAFAS}/journeys?from=${fromArr[0].id}&to=${toArr[0].id}&results=1&stopovers=true&polylines=true`,
       {signal:AbortSignal.timeout(12000)}
     );
     const jD=await jR.json();
@@ -438,7 +441,7 @@ async function loadNearbyStops(){
   stopsFG=L.featureGroup();
   try{
     const r=await fetch(
-      `/api/hafas/stops/nearby?latitude=${clat}&longitude=${clon}&results=50&distance=1500`,
+      `${HAFAS}/stops/nearby?latitude=${clat}&longitude=${clon}&results=50&distance=1500`,
       {signal:AbortSignal.timeout(10000)}
     );
     if(!r.ok)throw new Error('HTTP '+r.status);
@@ -468,7 +471,7 @@ async function loadNearbyStops(){
 async function fetchStopDeps(id,name){
   try{
     const r=await fetch(
-      `/api/hafas/stops/${encodeURIComponent(id)}/departures?results=6&duration=45`,
+      `${HAFAS}/stops/${encodeURIComponent(id)}/departures?results=6&duration=45`,
       {signal:AbortSignal.timeout(8000)}
     );
     if(!r.ok)throw new Error('HTTP '+r.status);
@@ -773,15 +776,15 @@ async function fetchOsrmDuration(profile,lat1,lon1,lat2,lon2){
 
 async function fetchTransitDuration(lat1,lon1,lat2,lon2,depTimeISO){
   const[fromR,toR]=await Promise.all([
-    fetch(`/api/hafas/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
-    fetch(`/api/hafas/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
+    fetch(`${HAFAS}/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
+    fetch(`${HAFAS}/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
   ]);
   const[fromArr,toArr]=await Promise.all([fromR.json(),toR.json()]);
   if(!fromArr?.length||!toArr?.length)throw new Error('Keine Haltestellen');
   const isArr=document.getElementById('time-dir')?.value==='arr';
   const params=new URLSearchParams({from:fromArr[0].id,to:toArr[0].id,results:1,stopovers:false});
   if(depTimeISO)params.set(isArr?'arrival':'departure',depTimeISO);
-  const jR=await fetch(`/api/hafas/journeys?${params}`,{signal:AbortSignal.timeout(12000)});
+  const jR=await fetch(`${HAFAS}/journeys?${params}`,{signal:AbortSignal.timeout(12000)});
   if(!jR.ok)throw new Error('HTTP '+jR.status);
   const jD=await jR.json();
   if(!jD.journeys?.length)throw new Error('Keine Verbindung');
@@ -1065,13 +1068,13 @@ async function loadBusDep(){
   try{
     let stopId=hafasIdCache[curLabel];
     if(!stopId){
-      const lr=await fetch(`/api/hafas/locations?query=${encodeURIComponent(curLabel)}&results=1`,{signal:AbortSignal.timeout(7000)});
+      const lr=await fetch(`${HAFAS}/locations?query=${encodeURIComponent(curLabel)}&results=1`,{signal:AbortSignal.timeout(7000)});
       const ld=await lr.json();
       if(!ld?.length)throw new Error('Haltestelle nicht gefunden');
       stopId=ld[0].id;
       hafasIdCache[curLabel]=stopId;
     }
-    const dr=await fetch(`/api/hafas/stops/${stopId}/departures?duration=45&results=20`,{signal:AbortSignal.timeout(9000)});
+    const dr=await fetch(`${HAFAS}/stops/${stopId}/departures?duration=45&results=20`,{signal:AbortSignal.timeout(9000)});
     if(!dr.ok)throw new Error('HTTP '+dr.status);
     const deps=await dr.json();
     const busDeps=(deps?.departures||deps||[]).filter(d=>['bus','subway','tram','ferry'].includes(d.line?.product)&&!d.cancelled).slice(0,12);
