@@ -149,6 +149,7 @@ function renderGreeting(){
 let startMap=null,startDestMarker=null,routeMode='transit';
 let hhMarker=null,routeFG=null,userPos=null;
 let srStartFG=null,dottStartFG=null,startSharingLoaded=false;
+let stopsFG=null,stopsLoaded=false;
 
 function getLocation(){
   const btn=document.getElementById('loc-btn');
@@ -252,13 +253,13 @@ async function fetchTransitRoute(lat1,lon1,lat2,lon2){
     nationalExpress:'#1c1c1c',national:'#1c1c1c',bus:'#9a3412',subway:'#1e3a8a',ferry:'#134e4a'};
   try{
     const[fromR,toR]=await Promise.all([
-      fetch(`https://v5.db.transport.rest/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
-      fetch(`https://v5.db.transport.rest/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
+      fetch(`/api/hafas/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
+      fetch(`/api/hafas/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
     ]);
     const[fromArr,toArr]=await Promise.all([fromR.json(),toR.json()]);
     if(!fromArr?.length||!toArr?.length)throw new Error('Keine Haltestellen gefunden');
     const jR=await fetch(
-      `https://v5.db.transport.rest/journeys?from=${fromArr[0].id}&to=${toArr[0].id}&results=1&stopovers=true&polylines=true`,
+      `/api/hafas/journeys?from=${fromArr[0].id}&to=${toArr[0].id}&results=1&stopovers=true&polylines=true`,
       {signal:AbortSignal.timeout(12000)}
     );
     const jD=await jR.json();
@@ -349,13 +350,19 @@ function nearestN(data,lat,lon,n=10){
 function updateMapLegend(){
   const el=document.getElementById('map-legend');
   if(!el)return;
+  const stopsOn=document.getElementById('msl-stops')?.classList.contains('on');
   const srOn=document.getElementById('msl-sr')?.classList.contains('on');
   const dottOn=document.getElementById('msl-dott')?.classList.contains('on');
-  if(!srOn&&!dottOn){el.style.display='none';return;}
+  if(!stopsOn&&!srOn&&!dottOn){el.style.display='none';return;}
   el.style.display='';
   let h='';
+  if(stopsOn){
+    h+=`<div><span style="display:inline-flex;align-items:center;justify-content:center;background:#1a7f37;color:#fff;font-size:8px;font-weight:800;width:13px;height:13px;border-radius:50%;margin-right:5px;vertical-align:middle">S</span>S-Bahn</div>`;
+    h+=`<div><span style="display:inline-flex;align-items:center;justify-content:center;background:#1e3a8a;color:#fff;font-size:8px;font-weight:800;width:13px;height:13px;border-radius:50%;margin-right:5px;vertical-align:middle">U</span>U-Bahn</div>`;
+    h+=`<div><span style="display:inline-flex;align-items:center;justify-content:center;background:#9a3412;color:#fff;font-size:8px;font-weight:800;width:13px;height:13px;border-radius:50%;margin-right:5px;vertical-align:middle">B</span>Bus</div>`;
+  }
   if(srOn){
-    h+=`<div><span class="leg-dot" style="background:#1a7f37"></span>Räder verfügbar</div>`;
+    h+=`<div><span class="leg-dot" style="background:#1a7f37"></span>StadtRAD verfügbar</div>`;
     h+=`<div><span class="leg-dot" style="background:#9a6700"></span>Wenige Räder</div>`;
     h+=`<div><span class="leg-dot" style="background:#cf222e"></span>Leer</div>`;
   }
@@ -406,6 +413,86 @@ function buildStartMapSharing(){
       .addTo(dottStartFG);
   });
   if(document.getElementById('msl-dott')?.classList.contains('on'))dottStartFG.addTo(startMap);
+}
+
+// ── TRANSIT STOPS ON MAP ──────────────────────────────────
+const STOP_COL={suburban:'#1a7f37',subway:'#1e3a8a',bus:'#9a3412',ferry:'#134e4a',tram:'#7c3aed'};
+const STOP_LBL={suburban:'S',subway:'U',bus:'B',ferry:'F',tram:'T'};
+
+async function toggleStartStops(btn){
+  const isOn=btn.classList.toggle('on');
+  if(!startMap){updateMapLegend();return;}
+  if(isOn&&!stopsLoaded){
+    btn.textContent='…';
+    await loadNearbyStops();
+    stopsLoaded=true;
+    btn.textContent='🚇';
+  }
+  if(isOn&&stopsFG)stopsFG.addTo(startMap);
+  else if(stopsFG)startMap.removeLayer(stopsFG);
+  updateMapLegend();
+}
+
+async function loadNearbyStops(){
+  const[clat,clon]=userPos?[userPos.lat,userPos.lon]:HH;
+  stopsFG=L.featureGroup();
+  try{
+    const r=await fetch(
+      `/api/hafas/stops/nearby?latitude=${clat}&longitude=${clon}&results=50&distance=1500`,
+      {signal:AbortSignal.timeout(10000)}
+    );
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const stops=await r.json();
+    stops.filter(s=>s.location?.latitude).forEach(stop=>{
+      const prods=stop.products||{};
+      const type=['suburban','subway','ferry','tram','bus'].find(p=>prods[p])||'bus';
+      const col=STOP_COL[type]||'#666';
+      const lbl=STOP_LBL[type]||'H';
+      const icon=L.divIcon({
+        html:`<div style="background:${col};color:#fff;font-size:9px;font-weight:800;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)">${lbl}</div>`,
+        className:'',iconSize:[18,18],iconAnchor:[9,9]
+      });
+      const m=L.marker([stop.location.latitude,stop.location.longitude],{icon});
+      m.on('click',async()=>{
+        m.bindPopup(`<div style="min-width:210px;font-size:12px"><b>${stop.name}</b><br><span style="color:#9198a1;font-size:11px">Abfahrten werden geladen…</span></div>`).openPopup();
+        const html=await fetchStopDeps(stop.id,stop.name);
+        if(m.isPopupOpen())m.getPopup().setContent(html);
+      });
+      m.addTo(stopsFG);
+    });
+  }catch(e){
+    console.error('stops:',e);
+  }
+}
+
+async function fetchStopDeps(id,name){
+  try{
+    const r=await fetch(
+      `/api/hafas/stops/${encodeURIComponent(id)}/departures?results=6&duration=45`,
+      {signal:AbortSignal.timeout(8000)}
+    );
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    const deps=d.departures||d||[];
+    if(!deps.length)return`<div style="font-size:12px"><b>${name}</b><br><span style="color:#9198a1">Keine Abfahrten gefunden</span></div>`;
+    const rows=deps.slice(0,6).map(dep=>{
+      const t=new Date(dep.when||dep.plannedWhen);
+      const time=t.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+      const delay=dep.delay?Math.round(dep.delay/60):0;
+      const dlHtml=delay>0?` <span style="color:#cf222e;font-weight:700">+${delay}'</span>`:'';
+      const col=STOP_COL[dep.line?.product]||'#656d76';
+      const line=dep.line?.name||'?';
+      const dir=(dep.direction||'').substring(0,22);
+      return`<tr>
+        <td style="padding:3px 6px 3px 0;font-weight:700;white-space:nowrap">${time}${dlHtml}</td>
+        <td style="padding:3px 5px 3px 0"><span style="background:${col};color:#fff;border-radius:3px;padding:1px 5px;font-size:10px;font-weight:700;white-space:nowrap">${line}</span></td>
+        <td style="padding:3px 0;font-size:11px;color:#656d76;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dir}</td>
+      </tr>`;
+    }).join('');
+    return`<div style="font-size:12px"><b>${name}</b><table style="margin-top:5px;border-collapse:collapse">${rows}</table></div>`;
+  }catch(e){
+    return`<div style="font-size:12px"><b>${name}</b><br><span style="color:#9198a1">Abfahrten nicht verfügbar</span></div>`;
+  }
 }
 
 // ── RECOMMENDATION ────────────────────────────────────────
@@ -686,15 +773,15 @@ async function fetchOsrmDuration(profile,lat1,lon1,lat2,lon2){
 
 async function fetchTransitDuration(lat1,lon1,lat2,lon2,depTimeISO){
   const[fromR,toR]=await Promise.all([
-    fetch(`https://v5.db.transport.rest/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
-    fetch(`https://v5.db.transport.rest/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
+    fetch(`/api/hafas/stops/nearby?latitude=${lat1}&longitude=${lon1}&results=1`,{signal:AbortSignal.timeout(7000)}),
+    fetch(`/api/hafas/stops/nearby?latitude=${lat2}&longitude=${lon2}&results=1`,{signal:AbortSignal.timeout(7000)})
   ]);
   const[fromArr,toArr]=await Promise.all([fromR.json(),toR.json()]);
   if(!fromArr?.length||!toArr?.length)throw new Error('Keine Haltestellen');
   const isArr=document.getElementById('time-dir')?.value==='arr';
   const params=new URLSearchParams({from:fromArr[0].id,to:toArr[0].id,results:1,stopovers:false});
   if(depTimeISO)params.set(isArr?'arrival':'departure',depTimeISO);
-  const jR=await fetch(`https://v5.db.transport.rest/journeys?${params}`,{signal:AbortSignal.timeout(12000)});
+  const jR=await fetch(`/api/hafas/journeys?${params}`,{signal:AbortSignal.timeout(12000)});
   if(!jR.ok)throw new Error('HTTP '+jR.status);
   const jD=await jR.json();
   if(!jD.journeys?.length)throw new Error('Keine Verbindung');
@@ -978,13 +1065,13 @@ async function loadBusDep(){
   try{
     let stopId=hafasIdCache[curLabel];
     if(!stopId){
-      const lr=await fetch(`https://v5.db.transport.rest/locations?query=${encodeURIComponent(curLabel)}&results=1`,{signal:AbortSignal.timeout(7000)});
+      const lr=await fetch(`/api/hafas/locations?query=${encodeURIComponent(curLabel)}&results=1`,{signal:AbortSignal.timeout(7000)});
       const ld=await lr.json();
       if(!ld?.length)throw new Error('Haltestelle nicht gefunden');
       stopId=ld[0].id;
       hafasIdCache[curLabel]=stopId;
     }
-    const dr=await fetch(`https://v5.db.transport.rest/stops/${stopId}/departures?duration=45&results=20`,{signal:AbortSignal.timeout(9000)});
+    const dr=await fetch(`/api/hafas/stops/${stopId}/departures?duration=45&results=20`,{signal:AbortSignal.timeout(9000)});
     if(!dr.ok)throw new Error('HTTP '+dr.status);
     const deps=await dr.json();
     const busDeps=(deps?.departures||deps||[]).filter(d=>['bus','subway','tram','ferry'].includes(d.line?.product)&&!d.cancelled).slice(0,12);
